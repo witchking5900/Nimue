@@ -185,7 +185,7 @@ export default function ProfileView() {
       setSendingMsg(true);
       
       try {
-          const ARCHMAGE_ID = '9177228f-6e97-4ebe-9dcc-f8ee4cce8026';
+          const ARCHMAGE_ID = '69a13b7d-53c3-40e0-8ad2-8b93440e7aad';
           const { error } = await supabase.rpc('send_petition', {
               target_user_id: ARCHMAGE_ID,
               topic: `Feedback / Good Wishes`, 
