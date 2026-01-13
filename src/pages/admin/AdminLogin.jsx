@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, AlertCircle } from 'lucide-react';
 
 // !!! REPLACE THIS WITH YOUR EXACT EMAIL !!!
-const ADMIN_EMAIL = "nimue4@test.com"; 
+const ADMIN_EMAIL = "witchking5900@gmail.com"; 
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('');
