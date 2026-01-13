@@ -8,7 +8,7 @@ import {
   User, Mail, Award, Heart, Clock, LogOut,
   Infinity as InfinityIcon, Ghost, Crown, Star, Loader2,
   PlusCircle, Lock, Send, Gift, Copy, MessageSquareHeart,
-  Grid, Eraser, Save, X, Edit2
+  Grid, Eraser, Save, X, Edit2, ChevronRight, Zap
 } from 'lucide-react';
 
 // --- PIXEL AVATAR EDITOR COMPONENT ---
@@ -102,7 +102,6 @@ export default function ProfileView() {
   
   // --- AVATAR STATE ---
   const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || null);
-  // We store the raw pixel array in metadata too, so they can edit it later
   const [pixelData, setPixelData] = useState(user?.user_metadata?.pixel_data || null); 
   const [showEditor, setShowEditor] = useState(false);
 
@@ -158,7 +157,6 @@ export default function ProfileView() {
       addToast(language === 'ka' ? "ანგარიშის ნომერი დაკოპირდა!" : "IBAN copied to clipboard!", "success");
   };
 
-  // --- SAVE AVATAR (NO FILE UPLOAD) ---
   const handleSaveAvatar = async (dataUrl, rawPixels) => {
       try {
           const { error } = await supabase.auth.updateUser({
@@ -167,9 +165,7 @@ export default function ProfileView() {
                   pixel_data: rawPixels 
               }
           });
-
           if (error) throw error;
-
           setAvatarUrl(dataUrl);
           setPixelData(rawPixels);
           setShowEditor(false);
@@ -179,11 +175,9 @@ export default function ProfileView() {
       }
   };
 
-  // --- CONTACT SUBMIT VIA SECURE RPC ---
   const handleContactSubmit = async (e) => {
       e.preventDefault();
       setSendingMsg(true);
-      
       try {
           const ARCHMAGE_ID = '69a13b7d-53c3-40e0-8ad2-8b93440e7aad';
           const { error } = await supabase.rpc('send_petition', {
@@ -192,13 +186,10 @@ export default function ProfileView() {
               content: contactMessage,
               sender: user.email
           });
-
           if (error) throw error;
-
           addToast(language === 'ka' ? "შეტყობინება გაგზავნილია!" : "Message Sent!", "success");
           setShowContactModal(false);
           setContactMessage("");
-
       } catch (err) {
           console.error("🔥 ERROR:", err.message);
           addToast(`Failed: ${err.message}`, "error");
@@ -229,7 +220,9 @@ export default function ProfileView() {
       donateTitle: "Support the Archmage",
       donateDesc: "If you wish, you can support the platform. Click to copy IBAN.",
       donateBtn: "Copy Account Number",
-      editAvatar: "Design Pixel Avatar"
+      editAvatar: "Design Pixel Avatar",
+      progressTo: "Progress to",
+      maxLevel: "Max Level Achieved"
     },
     ka: {
       profileMagical: "ჯადოქრის პროფილი", profileStandard: "სტუდენტის პროფილი",
@@ -251,12 +244,14 @@ export default function ProfileView() {
       donateTitle: "მხარდაჭერა",
       donateDesc: "თუ სურვილი გაქვთ, შეგიძლიათ მხარი დაუჭიროთ პლატფორმას. დააწკაპუნეთ ანგარიშის ნომრის დასაკოპირებლად.",
       donateBtn: "ანგარიშის ნომრის კოპირება",
-      editAvatar: "პიქსელ ავატარის შექმნა"
+      editAvatar: "პიქსელ ავატარის შექმნა",
+      progressTo: "პროგრესი",
+      maxLevel: "უმაღლესი დონე"
     }
   };
   const text = t[language] || t.en;
 
-  const getRankDisplay = () => {
+  const getRankDisplay = (rank) => {
     const titles = {
         archmage: { magical: { en: "Archmage", ka: "არქიმაგი" }, standard: { en: "Dept. Chair", ka: "დეპ. ხელმძღვანელი" }, color: 'text-purple-500', icon: InfinityIcon },
         insubstantial: { magical: { en: "Insubstantial", ka: "ილუზორული" }, standard: { en: "Honorary Fellow", ka: "საპატიო წევრი" }, color: 'text-fuchsia-400', icon: Ghost },
@@ -264,11 +259,37 @@ export default function ProfileView() {
         magus: { magical: { en: "Magus", ka: "ჯადოქარი" }, standard: { en: "Resident", ka: "რეზიდენტი" }, color: 'text-emerald-500', icon: Star },
         apprentice: { magical: { en: "Apprentice", ka: "შეგირდი" }, standard: { en: "Student", ka: "სტუდენტი" }, color: 'text-blue-500', icon: User }
     };
-    const config = titles[tier] || titles.apprentice;
+    const config = titles[rank] || titles.apprentice;
     const modeKey = isMagical ? 'magical' : 'standard';
     return { label: config[modeKey][language], color: config.color, icon: config.icon };
   };
-  const rankInfo = getRankDisplay();
+  const rankInfo = getRankDisplay(tier);
+
+  // --- XP BAR LOGIC ---
+  const XP_THRESHOLDS = {
+    // 0 - 500 XP -> Next is Magus
+    apprentice: { min: 0, max: 500, next: 'magus' },
+    // 500 - 2000 XP -> Next is Grand Magus
+    magus: { min: 500, max: 2000, next: 'grand_magus' },
+    // 2000+ XP -> Max Level (No auto-promotion to Archmage/Insubstantial)
+    grand_magus: { min: 2000, max: null, next: null },
+    insubstantial: { min: 0, max: null, next: null },
+    archmage: { min: 0, max: null, next: null }
+  };
+
+  const currentRankData = XP_THRESHOLDS[tier] || XP_THRESHOLDS.apprentice;
+  const nextRank = currentRankData.next;
+  const nextRankInfo = nextRank ? getRankDisplay(nextRank) : null;
+  
+  let xpPercentage = 100;
+  let progressText = text.maxLevel;
+
+  if (nextRank) {
+      const xpNeeded = currentRankData.max - currentRankData.min;
+      const xpProgress = Math.max(0, xp - currentRankData.min);
+      xpPercentage = Math.min(100, Math.max(0, (xpProgress / xpNeeded) * 100));
+      progressText = `${text.progressTo} ${nextRankInfo.label}`;
+  }
 
   const HEAL_COST = 50;
   const canAffordHeal = xp >= HEAL_COST;
@@ -352,7 +373,7 @@ export default function ProfileView() {
       </div>
 
       {/* STATS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div className={`p-6 rounded-2xl border-2 flex items-center gap-4 ${isMagical ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-100'}`}>
           <div className={`p-3 rounded-xl ${isMagical ? 'bg-cyan-900/30 text-cyan-400' : 'bg-blue-50 text-blue-600'}`}><Award size={32} /></div>
           <div><div className="text-sm opacity-60 uppercase tracking-wider font-bold">{isMagical ? text.xpMagical : text.xpStandard}</div><div className="text-3xl font-bold">{xp}</div></div>
@@ -380,6 +401,31 @@ export default function ProfileView() {
                 {isInfiniteHearts && <div className="text-xs font-bold mt-1 text-purple-500 opacity-80">{text.infinite}</div>}
              </div>
           </div>
+        </div>
+      </div>
+
+      {/* --- XP PROGRESS BAR --- */}
+      <div className={`mb-6 p-4 rounded-2xl border-2 ${isMagical ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-100'}`}>
+        <div className="flex justify-between items-center mb-2">
+            <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>
+                <Zap size={14} className={isMagical ? 'text-amber-500' : 'text-blue-500'} /> 
+                {progressText}
+            </span>
+            {nextRank && (
+                <span className="text-xs font-mono opacity-50">
+                    {xp} / {currentRankData.max} XP
+                </span>
+            )}
+        </div>
+        <div className={`w-full h-3 rounded-full overflow-hidden ${isMagical ? 'bg-slate-800' : 'bg-slate-200'}`}>
+            <div 
+                className={`h-full transition-all duration-1000 ease-out ${
+                    isMagical 
+                    ? 'bg-gradient-to-r from-amber-700 via-amber-500 to-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.5)]' 
+                    : 'bg-gradient-to-r from-blue-400 to-blue-600'
+                }`}
+                style={{ width: `${xpPercentage}%` }}
+            ></div>
         </div>
       </div>
 
