@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add this below your tailwind lines */
+body {
+  @apply transition-colors duration-500;
+}
+
+.magical body {
+  background-color: #0f071a;
+  color: #fef3c7;
+}
+
+.standard body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
