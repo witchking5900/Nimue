@@ -12,13 +12,15 @@ import TheoryViewer from './components/TheoryViewer';
 import AppsMenu from './components/AppsMenu';
 import AuthModal from './components/AuthModal'; 
 import ProfileView from './components/ProfileView'; 
-import AdminView from './components/AdminView'; // <--- NEW IMPORT
+
+// --- RESTORED ADMIN IMPORTS ---
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminDashboard from './pages/admin/AdminDashboard';
 
 // --- PAGES ---
 import CommunityHub from './pages/CommunityHub'; 
 import Grimoire from './pages/Grimoire'; 
 
-// --- ICONS ---
 import { Book, GraduationCap, LogOut, ChevronLeft, Users, Crown } from 'lucide-react'; 
 
 const translations = {
@@ -52,7 +54,6 @@ const translations = {
   }
 };
 
-// --- PROTECTED GRIMOIRE WRAPPER ---
 const GrimoireRoute = () => {
     return <Grimoire />;
 };
@@ -189,8 +190,9 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/community" element={<Dashboard />} />
               
-              {/* --- NEW ADMIN ROUTE --- */}
-              <Route path="/admin" element={<AdminView />} />
+              {/* --- RESTORED ORIGINAL ADMIN ROUTES --- */}
+              <Route path="/admin" element={<AdminLogin />} />
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
               
               <Route path="/grimoire" element={<GrimoireRoute />} />
               
