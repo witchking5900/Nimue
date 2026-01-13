@@ -19,7 +19,6 @@ export default function NotificationBell() {
         title: isMagical ? "Whispers" : "Notifications",
         markAll: "Mark all read",
         empty: isMagical ? "The void is silent..." : "No new notifications",
-        // Formatting for types
         bounty: "BOUNTY",
         report: "REPORT",
         system: "SYSTEM"
@@ -35,48 +34,53 @@ export default function NotificationBell() {
   };
   const text = t[language] || t.en;
 
-  // --- 1. FETCH FUNCTION ---
-  const fetchLatest = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
-      if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter(n => !n.is_read).length);
-      }
-  };
-
+  // --- 1. FETCH & LISTEN ---
   useEffect(() => {
     let channel;
-    
-    // A. Initial Load
-    fetchLatest();
 
-    // B. Realtime Listener
-    channel = supabase
-      .channel('notification_bell')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications' },
-        (payload) => {
-          supabase.auth.getUser().then(({ data: { user } }) => {
-              if (user && payload.new.user_id === user.id) {
-                  fetchLatest();
-              }
-          });
+    const setupNotifications = async () => {
+        // Get user first so we can filter subscription
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // A. Initial Fetch
+        const { data } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(20);
+        
+        if (data) {
+            setNotifications(data);
+            setUnreadCount(data.filter(n => !n.is_read).length);
         }
-      )
-      .subscribe();
+
+        // B. Realtime Listener (THE FIX)
+        channel = supabase
+            .channel('notification_bell')
+            .on(
+                'postgres_changes',
+                { 
+                    event: 'INSERT', 
+                    schema: 'public', 
+                    table: 'notifications',
+                    filter: `user_id=eq.${user.id}` // Only listen for YOUR notifications
+                },
+                (payload) => {
+                    // Instant UI Update (No refetch needed)
+                    const newNote = payload.new;
+                    setNotifications(prev => [newNote, ...prev]);
+                    setUnreadCount(prev => prev + 1);
+                }
+            )
+            .subscribe();
+    };
+
+    setupNotifications();
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
+        if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
@@ -85,17 +89,15 @@ export default function NotificationBell() {
   const markAsRead = async (id, e) => {
     if (e) e.stopPropagation();
 
-    // 1. Optimistic Update (Update UI first)
+    // 1. Optimistic Update
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
 
     // 2. Database Update
-    const { error } = await supabase
+    await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('id', id);
-    
-    if (error) console.error("Notification Error:", error);
   };
 
   const handleNotificationClick = (n) => {
@@ -106,18 +108,17 @@ export default function NotificationBell() {
 
   const clearAll = async () => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     
     // 1. Optimistic Update
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
 
     // 2. Database Update
-    const { error } = await supabase
+    await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('user_id', user.id);
-
-    if (error) console.error("Clear All Error:", error);
   };
 
   // --- CLICK OUTSIDE TO CLOSE ---
