@@ -8,7 +8,10 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [deviceId, setDeviceId] = useState(null);
 
-  // --- 1. DEVICE FINGERPRINTING (Kept for analytics only) ---
+  // YOUR ARCHMAGE ID (For alerts)
+  const ARCHMAGE_ID = '9177228f-6e97-4ebe-9dcc-f8ee4cce8026';
+
+  // --- 1. DEVICE FINGERPRINTING ---
   useEffect(() => {
     let storedId = localStorage.getItem('nimue_device_id');
     if (!storedId) {
@@ -23,7 +26,7 @@ export function AuthProvider({ children }) {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-          // Check Ban Status (Optional: Keep this if you still want to ban bad actors manually)
+          // 2.1 CHECK IF BANNED
           const { data: profile } = await supabase
             .from('profiles')
             .select('banned, ban_reason')
@@ -36,8 +39,7 @@ export function AuthProvider({ children }) {
             setUser(null);
           } else {
             setUser(session.user);
-            // We still run this, but it no longer blocks anyone
-            logSessionHeartbeat(session.user.id);
+            validateSessionSecurity(session.user.id, session.user.email);
           }
       }
       setLoading(false);
@@ -48,7 +50,7 @@ export function AuthProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
           setUser(session.user);
-          logSessionHeartbeat(session.user.id);
+          validateSessionSecurity(session.user.id, session.user.email);
       } else {
           setUser(null);
       }
@@ -58,37 +60,90 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, [deviceId]);
 
-  // --- 3. THE BUREAUCRAT (RETIRED) ---
-  // "WE FIGHT" PROTOCOL: This function now simply notes attendance.
-  // It effectively allows UNLIMITED devices and parallel sessions.
-  const logSessionHeartbeat = async (userId) => {
+  // --- 3. THE BUREAUCRAT (SECURITY LOGIC) ---
+  const validateSessionSecurity = async (userId, userEmail) => {
       if (!deviceId) return;
 
-      // We just update the 'active_sessions' table so you can see who is online
-      // But we DO NOT check for limits or throw alerts anymore.
-      
-      try {
-        const { data: existing } = await supabase
-            .from('active_sessions')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('device_id', deviceId)
-            .single();
+      // ============================================================
+      // CHECK 1: TRUSTED DEVICE LIMIT (Persistent "Guest List")
+      // ============================================================
+      const { data: trustedDevices } = await supabase
+          .from('trusted_devices')
+          .select('device_id')
+          .eq('user_id', userId);
 
-        if (!existing) {
-            await supabase.from('active_sessions').insert({
-                user_id: userId,
-                device_id: deviceId,
-                device_name: navigator.userAgent
-            });
-        } else {
-            await supabase.from('active_sessions')
-                .update({ last_seen: new Date() })
-                .eq('id', existing.id);
-        }
-      } catch (err) {
-          // If the table doesn't exist or errors, we ignore it. Freedom above all.
-          console.log("Session heartbeat skipped (Non-critical)");
+      const isTrusted = trustedDevices?.some(d => d.device_id === deviceId);
+      const deviceCount = trustedDevices?.length || 0;
+
+      if (!isTrusted) {
+          if (deviceCount >= 2) {
+              await supabase.auth.signOut();
+              
+              // SEND ALERT TO ARCHMAGE
+              await supabase.rpc('send_petition', {
+                  target_user_id: ARCHMAGE_ID,
+                  topic: `Security: 3rd Device Attempt`,
+                  content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
+                  sender: userEmail
+              });
+
+              alert("🚫 ACCESS DENIED 🚫\n\nYour account is linked to the maximum number of devices (2).\nThis device is not authorized.");
+              return;
+          } else {
+              // Register new device
+              await supabase.from('trusted_devices').insert({
+                  user_id: userId,
+                  device_id: deviceId,
+                  device_name: navigator.userAgent
+              });
+          }
+      }
+
+      // ============================================================
+      // CHECK 2: PARALLEL SESSION LIMIT
+      // ============================================================
+      const { data: activeSessions } = await supabase
+          .from('active_sessions')
+          .select('*')
+          .eq('user_id', userId);
+
+      const otherActiveSessions = activeSessions?.filter(s => 
+          s.device_id !== deviceId && 
+          (new Date() - new Date(s.last_seen) < 5 * 60 * 1000) 
+      );
+
+      if (otherActiveSessions?.length > 0) {
+          console.warn("⚠️ Parallel session detected.");
+
+          // 1. REPORT TO ARCHMAGE (Using Secure RPC)
+          await supabase.rpc('send_petition', {
+              target_user_id: ARCHMAGE_ID,
+              topic: `Security: Parallel Login`,
+              content: `User ${userEmail} attempted simultaneous login. Session Nuked.`,
+              sender: userEmail
+          });
+
+          // 2. NUKE SESSIONS
+          await supabase.from('active_sessions').delete().eq('user_id', userId);
+          await supabase.auth.signOut();
+          
+          alert("⚡ SECURITY VIOLATION ⚡\n\nSimultaneous logins are strictly forbidden.\nThis incident has been reported to the Archmage.");
+          return;
+      }
+
+      // ============================================================
+      // CHECK 3: REGISTER HEARTBEAT
+      // ============================================================
+      const mySession = activeSessions?.find(s => s.device_id === deviceId);
+      
+      if (!mySession) {
+          await supabase.from('active_sessions').insert({
+              user_id: userId,
+              device_id: deviceId,
+              device_name: navigator.userAgent
+          });
+      } else {
+          await supabase.from('active_sessions').update({ last_seen: new Date() }).eq('id', mySession.id);
       }
   };
 
@@ -97,34 +152,16 @@ export function AuthProvider({ children }) {
     return await supabase.auth.signInWithPassword({ email, password });
   };
 
-  // ✅ ADDED MISSING SIGN UP FUNCTION
-  const signUp = async (email, password, username, fullName) => {
-    return await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          username,
-          full_name: fullName, // Store the name in metadata
-          tier: 'apprentice'   // Default rank
-        }
-      }
-    });
-  };
-
   const signOut = async () => {
-    // Optional: Clean up session on logout
     if (user && deviceId) {
-        try {
-            await supabase.from('active_sessions').delete().match({ user_id: user.id, device_id: deviceId });
-        } catch (e) { /* ignore */ }
+        await supabase.from('active_sessions').delete().match({ user_id: user.id, device_id: deviceId });
     }
     await supabase.auth.signOut();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, signIn, signUp, signOut, loading }}>
+    <AuthContext.Provider value={{ user, signIn, signOut, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );

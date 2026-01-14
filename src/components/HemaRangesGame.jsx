@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { useGameLogic } from '../context/GameContext';
+import { useGameLogic } from '../hooks/useGameLogic';
 import { 
   Droplets, 
   ArrowLeft, 
@@ -62,7 +62,7 @@ export default function HemaRangesGame({ onBack }) {
       question: isMagical ? "What is the Divine Proportion for:" : "Select the normal range for:",
       next: "Next Law",
       start: "Begin Drill",
-      correct: "Correct! (+1 XP)",
+      correct: "Correct! (+5 XP)",
       wrong: "Incorrect. Study this:",
       back: "Back"
     },
@@ -72,7 +72,7 @@ export default function HemaRangesGame({ onBack }) {
       question: isMagical ? "რა არის ღვთაებრივი პროპორცია:" : "აირჩიეთ ნორმის ფარგლები:",
       next: "შემდეგი",
       start: "დაწყება",
-      correct: "სწორია! (+1 XP)",
+      correct: "სწორია! (+5 XP)",
       wrong: "შეცდომაა. დაიმახსოვრეთ:",
       back: "უკან"
     }
@@ -97,8 +97,7 @@ export default function HemaRangesGame({ onBack }) {
     
     if (option === currentQuestion.correct) {
       setIsCorrect(true);
-      // 🔥 CHANGED TO 1 XP 🔥
-      gainXp(1); 
+      gainXp(5); // Small reward for drills
     } else {
       setIsCorrect(false);
       // NO DAMAGE TAKEN HERE!

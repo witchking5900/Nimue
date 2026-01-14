@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { Sparkles, Activity, Globe } from 'lucide-react';
+import { Sparkles, Activity, Globe } from 'lucide-react'; // Added Globe
 
 export default function WelcomeModal() {
   const { setTheme, language, setLanguage } = useTheme(); 
@@ -24,27 +24,21 @@ export default function WelcomeModal() {
     }
   };
 
-  // Fallback to Georgian ('ka') if language is not set
-  const t = content[language] || content['ka'];
+  const t = content[language];
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('nimue-theme-pref');
     if (!savedTheme) {
       setIsOpen(true); 
-      // Ensure language is Georgian on first visit if no preference exists
-      if (!localStorage.getItem('nimue-lang-pref')) {
-        setLanguage('ka');
-      }
     } else {
       setTheme(savedTheme); 
     }
-  }, [setTheme, setLanguage]);
+  }, [setTheme]);
 
   const handleChoice = (choice) => {
     setTheme(choice);
     if (remember) {
       localStorage.setItem('nimue-theme-pref', choice);
-      localStorage.setItem('nimue-lang-pref', language); // Save language choice too
     }
     setIsOpen(false);
   };
@@ -57,16 +51,16 @@ export default function WelcomeModal() {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
+      {/* Added 'relative' here so the absolute button knows where to sit */}
       <div className="bg-white dark:bg-slate-900 rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-700 animate-in zoom-in duration-300 relative">
         
-        {/* --- LANGUAGE BUTTON --- */}
+        {/* --- LANGUAGE BUTTON (New!) --- */}
         <button 
           onClick={toggleLanguage}
           className="absolute top-4 right-4 z-50 p-2 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors flex items-center gap-2 text-xs font-bold shadow-lg border border-slate-600"
         >
           <Globe size={16} />
-          {/* Label shows current language */}
-          <span>{language === 'ka' ? 'KA' : 'EN'}</span>
+          <span>{language === 'en' ? 'EN' : 'GE'}</span>
         </button>
 
         {/* Header */}

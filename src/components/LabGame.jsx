@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useGameLogic } from '../hooks/useGameLogic';
-import { supabase } from '../supabaseClient';
+import { supabase } from '/src/supabaseClient.js';
 
 import { 
   FlaskConical, 
@@ -43,9 +43,7 @@ export default function LabGame({ onBack }) {
       noEnergy: "No energy left! Wait for regeneration.",
       solved: "Solved",
       mastered: "Category Mastered",
-      skip: "Skip (Go to Next)",
-      empty: "No potions found in the archive.",
-      back: "Back"
+      skip: "Skip (Go to Next)"
     },
     ka: {
       title: isMagical ? "ალქიმიკოსის მაგიდა" : "ლაბორატორიული დიაგნოსტიკა",
@@ -58,9 +56,7 @@ export default function LabGame({ onBack }) {
       noEnergy: "ენერგია არ გაქვთ! დაელოდეთ აღდგენას.",
       solved: "ამოხსნილია",
       mastered: "შესწავლილია",
-      skip: "გამოტოვება (შემდეგი)",
-      empty: "არქივში ელექსირები არ მოიძებნა.",
-      back: "უკან"
+      skip: "გამოტოვება (შემდეგი)"
     }
   };
   const text = t[language];
@@ -126,8 +122,9 @@ export default function LabGame({ onBack }) {
         : catCases;
 
     if (availableCases.length === 0) {
-        // If this was the only case in the category, reload it to prevent locking
+        // If this was the only case in the category, reload it or warn
         if (catCases.length > 0 && currentCaseId) {
+             // Just reload the same one if it's the only one exists
              setActiveCase(catCases[0]);
              setSelectedOption(null);
              return;
@@ -165,7 +162,6 @@ export default function LabGame({ onBack }) {
     if (option.correct) {
       const isFirstTime = !completedIds.has(activeCase.id);
       if (isFirstTime) {
-          // 🔥 RESTORED TO 5 XP 🔥
           completeActivity(activeCase.id, 5);
       } else {
           completeActivity(activeCase.id, 0); 
@@ -176,6 +172,17 @@ export default function LabGame({ onBack }) {
   };
 
   // --- HELPER TEXT ---
+  const getCaseTitle = (scenario) => {
+      if (scenario.title && scenario.title[language] && scenario.title[language].trim() !== "") {
+          return scenario.title[language];
+      }
+      if (scenario.title && scenario.title['en'] && scenario.title['en'].trim() !== "") {
+          return scenario.title['en'];
+      }
+      if (scenario.category) return scenario.category;
+      return "Unknown Potion";
+  };
+
   const getOptionText = (option) => {
       if (typeof option.text === 'string') return option.text;
       return option.text[language] || option.text['en'];
@@ -189,6 +196,7 @@ export default function LabGame({ onBack }) {
               ? option.feedback 
               : (option.feedback[language] || option.feedback['en']);
           
+          // Only return if it's not empty/null
           if (fb && fb.trim() !== "") return fb;
       }
 
@@ -217,7 +225,7 @@ export default function LabGame({ onBack }) {
       <div className="max-w-4xl mx-auto animate-in fade-in">
         <div className="flex justify-between items-center mb-6">
             <button onClick={onBack} className="px-4 py-2 rounded bg-black/5 hover:bg-black/10 flex items-center gap-2">
-                <ArrowLeft size={18} /> {text.back}
+                <ArrowLeft size={18} /> {language === 'ka' ? 'უკან' : 'Back'}
             </button>
             <div className="flex items-center gap-1 bg-black/5 px-3 py-1 rounded-full">
                 <Heart size={16} className={hearts > 0 ? "text-red-500 fill-red-500" : "text-slate-400"} />
@@ -233,7 +241,7 @@ export default function LabGame({ onBack }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {uniqueCategories.length === 0 ? (
                 <div className="col-span-full text-center py-10 opacity-50">
-                    {text.empty}
+                    No potions found in the archive.
                 </div>
             ) : (
                 uniqueCategories.map(cat => {
@@ -407,11 +415,12 @@ export default function LabGame({ onBack }) {
                         )}
                     </div>
                     
+                    {/* FIX: Use helper function to display specific feedback */}
                     <p className="text-sm opacity-90">
                         {getFeedbackText(activeCase, selectedOption)}
                     </p>
                     
-                    {/* NEXT BUTTON */}
+                    {/* NEXT BUTTON (Triggers NEXT, not EXIT) */}
                     <button 
                         onClick={handleNextCase}
                         className="mt-4 w-full py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition"

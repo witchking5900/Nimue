@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '/src/supabaseClient.js';
 import { useTheme } from '../context/ThemeContext';
-import { useGameLogic } from '../context/GameContext';
+import { useGameLogic } from '../hooks/useGameLogic';
 import { useToast } from '../context/ToastContext';
 
 // Game Imports
@@ -18,16 +18,26 @@ import {
 
 export default function AppsMenu({ onBack }) {
   const { theme, language } = useTheme();
-  const { tier, xp, hasAccess, profile } = useGameLogic(); // Removed rentApp
+  const { tier, xp, rentApp, hasAccess, profile } = useGameLogic();
   const { addToast } = useToast();
   
   const isMagical = theme === 'magical';
   const [selectedApp, setSelectedApp] = useState(null);
   const [subscribedApps, setSubscribedApps] = useState([]);
 
-  // --- LOCKDOWN STATE (Kept for Admins) ---
+  // --- TIMER STATE ---
+  const [timers, setTimers] = useState({});
+
+  // --- MODAL STATES ---
+  const [pendingRental, setPendingRental] = useState(null); 
+  const [showNoXpModal, setShowNoXpModal] = useState(false); 
+  const [missingXpAmount, setMissingXpAmount] = useState(0); 
+
+  // --- LOCKDOWN STATE ---
   const [appBlocked, setAppBlocked] = useState(false);
   const [blockTime, setBlockTime] = useState(null);
+
+  const RENTAL_COSTS = { clinical: 500, labs: 200 };
 
   const getText = (content) => {
     if (!content) return "";
@@ -35,7 +45,7 @@ export default function AppsMenu({ onBack }) {
     return content[language] || content['en'];
   };
 
-  // --- 0. SECURITY CHECK (Admin Ban Logic) ---
+  // --- 0. SECURITY CHECK ---
   useEffect(() => {
     const checkAccess = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -67,7 +77,35 @@ export default function AppsMenu({ onBack }) {
       }
   }, []);
 
-  // --- 2. FETCH SUBSCRIPTIONS ---
+  // --- 2. LIVE COUNTDOWN LOGIC ---
+  useEffect(() => {
+    const updateTimers = () => {
+        if (!profile || !profile.unlocks) return;
+        
+        const newTimers = {};
+        Object.entries(profile.unlocks).forEach(([appId, expiryDate]) => {
+            const now = new Date();
+            const end = new Date(expiryDate);
+            const diff = end - now;
+
+            if (diff > 0) {
+                const h = Math.floor(diff / (1000 * 60 * 60));
+                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const s = Math.floor((diff % (1000 * 60)) / 1000);
+                newTimers[appId] = `${h}h ${m}m ${s}s`;
+            } else {
+                newTimers[appId] = null; // Expired
+            }
+        });
+        setTimers(newTimers);
+    };
+
+    updateTimers();
+    const interval = setInterval(updateTimers, 1000);
+    return () => clearInterval(interval);
+  }, [profile]); 
+
+  // --- 3. FETCH SUBSCRIPTIONS ---
   useEffect(() => {
       const fetchSubs = async () => {
           const { data: { user } } = await supabase.auth.getUser();
@@ -87,19 +125,11 @@ export default function AppsMenu({ onBack }) {
       if (subscribedApps.includes(appCategory)) {
           await supabase.from('subscriptions').delete().match({ user_id: user.id, category: appCategory });
           setSubscribedApps(prev => prev.filter(c => c !== appCategory));
-          
-          const msg = isMagical 
-            ? (language === 'ka' ? "კავშირი გაწყვეტილია." : "Link severed.")
-            : (language === 'ka' ? "გამოწერა გაუქმებულია." : "Unsubscribed.");
-          addToast(msg);
+          addToast(isMagical ? "Link severed." : "Unsubscribed.");
       } else {
           await supabase.from('subscriptions').insert({ user_id: user.id, category: appCategory });
           setSubscribedApps(prev => [...prev, appCategory]);
-          
-          const msg = isMagical 
-            ? (language === 'ka' ? "ბედი შეკრულია." : "Fate bound.")
-            : (language === 'ka' ? "გამოწერილია!" : "Subscribed!");
-          addToast(msg);
+          addToast(isMagical ? "Fate bound." : "Subscribed!");
       }
   };
 
@@ -110,7 +140,7 @@ export default function AppsMenu({ onBack }) {
       categoryKey: 'Hematology',
       component: <HemaRangesGame onBack={() => setSelectedApp(null)} />,
       icon: Scale, 
-      badgeText: { en: "Training", ka: "სავარჯიშო" },
+      badgeText: { en: "Training", ka: "ვარჯიში" },
       stdTitle: { en: "Reference Ranges", ka: "ნორმის მაჩვენებლები" },
       stdDesc: { en: "Master hematological values and physiology.", ka: "შეისწავლეთ ჰემატოლოგიური მაჩვენებლები." },
       stdColor: "text-blue-500",
@@ -165,7 +195,7 @@ export default function AppsMenu({ onBack }) {
       magColor: "text-emerald-400",
       magBg: "bg-emerald-400/10",
     },
-    // 🔥 GRIMOIRE OF FAILURES (Kept Tier Lock as Progression, not Restriction) 🔥
+    // 🔥 GRIMOIRE OF FAILURES (LOCKED FOR FREE USERS) 🔥
     {
       id: 'failures',
       categoryKey: 'Grimoire',
@@ -188,7 +218,7 @@ export default function AppsMenu({ onBack }) {
     const isGrimoire = appId === 'failures';
     const isMagusPlus = ['magus', 'grand_magus', 'insubstantial', 'archmage'].includes(tier);
 
-    // 2. Grimoire Progression Check (Kept as game mechanic)
+    // 2. Grimoire Lock Logic (Strict Tier Lock)
     if (isGrimoire) {
         if (isMagusPlus) {
             setSelectedApp(appId);
@@ -198,11 +228,43 @@ export default function AppsMenu({ onBack }) {
         return;
     }
 
-    // 3. ALL OTHER APPS ARE NOW FREE (Restrictions Removed)
-    setSelectedApp(appId);
+    // 3. Free Apps
+    if (appId === 'ranges' || appId === 'ecg') {
+        setSelectedApp(appId);
+        return;
+    }
+
+    // 4. Rentable Apps (Check if already unlocked via rent)
+    if (hasAccess(appId)) {
+        setSelectedApp(appId);
+        return;
+    }
+
+    // 5. Rental Process
+    const cost = RENTAL_COSTS[appId];
+    const appConfig = APP_CONFIG.find(a => a.id === appId);
+    if (xp >= cost) {
+        setPendingRental(appConfig);
+    } else {
+        setMissingXpAmount(cost - xp);
+        setShowNoXpModal(true);
+    }
   };
 
-  // --- RENDER JAIL SCREEN IF BANNED (Kept for Admins) ---
+  const confirmRental = () => {
+    if (!pendingRental) return;
+    const cost = RENTAL_COSTS[pendingRental.id];
+    const success = rentApp(pendingRental.id, cost);
+    if (success) {
+        addToast(language === 'ka' ? "წარმატებით იქირავეთ (24 სთ)!" : "Rented for 24h!", "success");
+        setPendingRental(null);
+        setSelectedApp(pendingRental.id);
+    } else {
+        addToast("Transaction failed. Contact the Archmage.", "error");
+    }
+  };
+
+  // --- RENDER JAIL SCREEN IF BANNED ---
   if (appBlocked) {
     return (
       <div className={`min-h-[80vh] flex flex-col items-center justify-center p-8 text-center animate-in fade-in ${isMagical ? 'text-amber-50' : 'text-slate-900'}`}>
@@ -241,6 +303,48 @@ export default function AppsMenu({ onBack }) {
   return (
     <div className={`w-full max-w-5xl mx-auto animate-in fade-in zoom-in duration-300 p-4 md:p-8 ${isMagical ? 'text-white' : 'text-slate-900'}`}>
       
+      {/* RENTAL CONFIRMATION MODAL */}
+      {pendingRental && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className={`relative w-full max-w-md p-8 rounded-3xl border-2 shadow-2xl overflow-hidden text-center ${isMagical ? 'bg-slate-950 border-amber-600 text-amber-50' : 'bg-white border-blue-200 text-slate-900'}`}>
+                <h3 className={`text-2xl font-bold mb-4 ${isMagical ? 'font-serif text-amber-500' : 'text-slate-800'}`}>
+                    {isMagical ? (language === 'ka' ? "გარიგების დადება" : "Strike a Bargain") : (language === 'ka' ? "დაადასტურეთ ქირაობა" : "Confirm Rental")}
+                </h3>
+                <p className={`mb-8 text-lg ${isMagical ? 'text-amber-100/80' : 'text-slate-600'}`}>
+                    {language === 'ka' 
+                        ? <>იქირავეთ <strong>{getText(isMagical ? pendingRental.magTitle : pendingRental.stdTitle)}</strong> 24 საათით <strong>{RENTAL_COSTS[pendingRental.id]} XP</strong>-ის სანაცვლოდ?</>
+                        : <>Rent <strong>{getText(isMagical ? pendingRental.magTitle : pendingRental.stdTitle)}</strong> for <strong>{RENTAL_COSTS[pendingRental.id]} XP</strong> for 24 hours?</>
+                    }
+                </p>
+                <div className="flex flex-col gap-3">
+                    <button onClick={confirmRental} className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] ${isMagical ? 'bg-red-900/80 hover:bg-red-800 border border-red-700 text-red-100 shadow-[0_0_15px_rgba(220,38,38,0.3)]' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}>
+                        {isMagical ? <Feather size={20} /> : <Unlock size={20} />}
+                        {isMagical ? (language === 'ka' ? "სისხლით ხელმოწერა" : "Sign with Blood") : (language === 'ka' ? "დათანხმება" : "Accept")}
+                    </button>
+                    <button onClick={() => setPendingRental(null)} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${isMagical ? 'bg-transparent hover:bg-slate-900 text-slate-500 border border-slate-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+                        {isMagical ? (language === 'ka' ? "უარი გარიგებაზე" : "Refuse Bargain") : (language === 'ka' ? "უარი" : "Refuse")}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* NO XP MODAL */}
+      {showNoXpModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+             <div className={`relative w-full max-w-sm p-8 rounded-3xl border-2 shadow-2xl text-center ${isMagical ? 'bg-slate-900 border-red-900 text-red-100' : 'bg-white border-red-200 text-slate-900'}`}>
+                <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${isMagical ? 'bg-red-900/30 text-red-500' : 'bg-red-100 text-red-500'}`}><AlertTriangle size={32} /></div>
+                <h3 className="text-xl font-bold mb-2">{isMagical ? (language === 'ka' ? "არასაკმარისი ძალა" : "Insufficient Power") : (language === 'ka' ? "არასაკმარისი ქულები" : "Insufficient XP")}</h3>
+                <p className="mb-8 opacity-80">
+                    {isMagical
+                        ? (language === 'ka' ? `თქვენ გაკლიათ ${missingXpAmount} საიდუმლო ცოდნა (XP).` : `You lack ${missingXpAmount} Arcane Knowledge.`)
+                        : (language === 'ka' ? `თქვენ გაკლიათ ${missingXpAmount} გამოცდილება (XP).` : `You lack ${missingXpAmount} experience points.`)}
+                </p>
+                <button onClick={() => setShowNoXpModal(false)} className={`w-full py-3 rounded-xl font-bold transition-all ${isMagical ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>{language === 'ka' ? "დახურვა" : "Close"}</button>
+             </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
          <div className="flex items-center gap-4">
@@ -259,13 +363,22 @@ export default function AppsMenu({ onBack }) {
           const isGrimoire = app.id === 'failures';
           const isMagusPlus = ['magus', 'grand_magus', 'insubstantial', 'archmage'].includes(tier);
 
-          // All apps are unlocked except Grimoire (which depends on Tier)
-          let unlocked = true;
-          if (isGrimoire) unlocked = isMagusPlus;
+          // 1. Determine Access
+          let unlocked = false;
+          let isAlwaysUnlocked = app.id === 'ranges' || app.id === 'ecg';
+
+          if (isGrimoire) {
+              unlocked = isMagusPlus; // Strict Tier Check
+          } else {
+              unlocked = isAlwaysUnlocked || hasAccess(app.id);
+          }
 
           const isLocked = !unlocked;
+          const rentCost = RENTAL_COSTS[app.id];
           const isSubscribed = subscribedApps.includes(app.categoryKey);
           
+          const timeLeft = !isAlwaysUnlocked && unlocked && !isGrimoire ? timers[app.id] : null;
+
           let cardClasses = isMagical ? 'bg-slate-900 border-slate-800 hover:border-amber-500/50 shadow-lg shadow-black/20' : 'bg-white border-slate-200 hover:border-blue-400 shadow-sm hover:shadow-md';
           if (isLocked) cardClasses += " opacity-90 grayscale-[0.3]";
 
@@ -273,17 +386,18 @@ export default function AppsMenu({ onBack }) {
           const titleColor = isMagical ? 'text-white font-serif tracking-wide' : 'text-slate-900 font-sans tracking-tight';
           const descColor = isMagical ? 'text-slate-400' : 'text-slate-500';
           
-          // Determine Button Text
+          // 2. Determine Button Text
           let btnText = "";
           let IconComponent = ArrowRight;
 
           if (isLocked) {
               if (isGrimoire) {
+                  // Special Lock Text for Grimoire
                   btnText = language === 'ka' ? "საჭიროა მაგუსის რანგი" : "MAGUS & ABOVE";
                   IconComponent = Crown;
               } else {
-                  // Should not happen for others anymore, but fallback just in case
-                  btnText = language === 'ka' ? "დაბლოკილია" : "LOCKED";
+                  // Standard Rental Text
+                  btnText = language === 'ka' ? `ქირაობა (${rentCost} XP)` : `Rent 24h (${rentCost} XP)`;
                   IconComponent = Lock;
               }
           } else {
@@ -302,13 +416,13 @@ export default function AppsMenu({ onBack }) {
               </button>
 
               <div className="w-full h-full text-left p-8">
-                {/* Badge Text */}
+                {/* 3. Determine Badge Text */}
                 <div className={`absolute bottom-8 right-8 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${badgeClasses} ${isLocked ? (isMagical ? "border-red-900 text-red-400" : "border-red-200 text-red-500") : ""}`}>
                     {isLocked && <Lock size={12} />}
                     {isLocked 
                         ? (isGrimoire 
                             ? (language === 'ka' ? "მხოლოდ მაგუსებისთვის" : "MAGUS ONLY") 
-                            : (language === 'ka' ? "დაბლოკილია" : "LOCKED"))
+                            : (language === 'ka' ? `დაბლოკილია (${rentCost} XP)` : `LOCKED (${rentCost} XP)`))
                         : getText(app.badgeText)}
                 </div>
 
@@ -329,6 +443,14 @@ export default function AppsMenu({ onBack }) {
                         {btnText} 
                         {!isLocked && <IconComponent size={18} />}
                     </div>
+                    
+                    {/* LIVE TIMER DISPLAY */}
+                    {timeLeft && (
+                        <div className={`flex items-center gap-1 text-xs font-mono opacity-80 ${isMagical ? 'text-green-400' : 'text-green-600'}`}>
+                            <Clock size={14} />
+                            <span>{timeLeft} left</span>
+                        </div>
+                    )}
                 </div>
               </div>
             </div>

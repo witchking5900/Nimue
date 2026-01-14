@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '../context/ThemeContext'; 
-import { useGameLogic } from '../context/GameContext'; 
+import { useGameLogic } from '../hooks/useGameLogic'; 
 import { useToast } from '../context/ToastContext';
 import { useSound } from '../hooks/useSound'; 
 import { 
   Activity, BookOpen, Brain, ChevronRight, CheckCircle, XCircle, 
   Info, RefreshCw, Stethoscope, Play, Pause, SplitSquareHorizontal, 
-  Zap, AlertTriangle, Heart, ArrowLeft, Star, Crown, Clock
+  Zap, AlertTriangle, Heart, ArrowLeft, Lock, Crown, Clock, Star,
+  Unlock, Feather // Added icons for modals
 } from 'lucide-react';
 
-// --- Constants & Data ---
+// --- Constants & Data (UNCHANGED) ---
 const DEFAULT_CANVAS_WIDTH = 800;
 const DEFAULT_CANVAS_HEIGHT = 200;
 
@@ -68,11 +69,22 @@ const TRANSLATIONS = {
     lives: "Lives",
     exit: "Back to Menu",
     locked: "Locked",
+    rent: "Rent 24h",
     sessionComplete: "Session Complete!",
     perfectScore: "Perfect Score! You are a master of rhythms.",
     dailyMastered: "Daily Mastery Achieved",
-    open: "Open",
-    freeAccess: "Free Access"
+    // MODAL TEXTS
+    signBlood: "Sign with Blood",
+    refuseBargain: "Refuse Bargain",
+    accept: "Accept",
+    refuse: "Refuse",
+    strikeBargain: "Strike a Bargain",
+    confirmRental: "Confirm Rental",
+    insufficientPower: "Insufficient Power",
+    insufficientXP: "Insufficient XP",
+    lackArcane: "You lack Arcane Knowledge.",
+    lackXP: "You lack experience points.",
+    close: "Close"
   },
   ka: {
     appTitle: "ელვის გრაგნილები",
@@ -128,15 +140,25 @@ const TRANSLATIONS = {
     lives: "სიცოცხლეები",
     exit: "მენიუში დაბრუნება",
     locked: "დაბლოკილია",
+    rent: "ქირაობა 24სთ",
     sessionComplete: "სესია დასრულებულია!",
     perfectScore: "შესანიშნავია! თქვენ რიტმების ოსტატი ხართ.",
     dailyMastered: "დღიური ოსტატობა მიღწეულია",
-    open: "გახსნა",
-    freeAccess: "უფასო წვდომა"
+    // MODAL TEXTS
+    signBlood: "სისხლით ხელმოწერა",
+    refuseBargain: "უარი გარიგებაზე",
+    accept: "დათანხმება",
+    refuse: "უარი",
+    strikeBargain: "გარიგების დადება",
+    confirmRental: "დაადასტურეთ ქირაობა",
+    insufficientPower: "არასაკმარისი ძალა",
+    insufficientXP: "არასაკმარისი ქულები",
+    lackArcane: "თქვენ გაკლიათ საიდუმლო ცოდნა (XP).",
+    lackXP: "თქვენ გაკლიათ გამოცდილება (XP).",
+    close: "დახურვა"
   }
 };
 
-// ... [WAVEFORM ARRAYS KEPT SAME - OMITTED FOR BREVITY] ...
 const P_WAVE_NORMAL = [0, 1, 2, 2.5, 3, 2.5, 2, 1, 0];
 const P_WAVE_M_SHAPE = [0, 0.5, 1.5, 2.5, 3, 2.2, 2, 2.2, 3, 2.5, 1.5, 0.5, 0];
 const P_WAVE_TALL = [0, 2, 4, 6, 7.5, 6, 4, 2, 0];
@@ -169,14 +191,11 @@ const RHYTHMS = {
   AFIB: { id: 'AFIB', name_en: "Atrial Fibrillation", name_ka: "წინაგულთა ფიბრილაცია", bpm: 130, desc_en: "Irregularly irregular.", desc_ka: "არარეგულარულად არარეგულარული.", mgmt_en: "Rate control/Anticoag.", mgmt_ka: "სიხშირის კონტროლი/ანტიკოაგ.", regular: false, hasP: false, qrsWidth: 1, beatShape: AFIB_COMPLEX, interval: 35, randomness: 40, noise: 1.5 },
   VT: { id: 'VT', name_en: "Ventricular Tachycardia", name_ka: "პარკუჭოვანი ტაქიკარდია", bpm: 160, desc_en: "Wide complex tachy.", desc_ka: "განიერკომპლექსიანი ტაქი.", mgmt_en: "Cardiovert/Defib.", mgmt_ka: "კარდიოვერსია/დეფიბ.", regular: true, hasP: false, qrsWidth: 2.5, beatShape: VTACH_COMPLEX, interval: 10, randomness: 2, noise: 0.5 },
   WPW: { id: 'WPW', name_en: "Wolff-Parkinson-White", name_ka: "ვოლფ-პარკინსონ-უაიტი", bpm: 70, desc_en: "Delta wave.", desc_ka: "დელტა ტალღა.", mgmt_en: "Ablation.", mgmt_ka: "აბლაცია.", regular: true, hasP: true, deltaWave: true, kent: true, qrsWidth: 1.5, beatShape: WPW_COMPLEX, interval: 40, randomness: 2, noise: 0 },
-  // UPDATED TRANSLATIONS FOR PVC
-  PVC_MONO: { id: 'PVC_MONO', name_en: "PVC (Monomorphic)", name_ka: "პარკუჭოვანი ექსტრასისტოლა (მონომორფული)", bpm: 70, desc_en: "Wide ectopic beat.", desc_ka: "განიერი ექტოპიური დარტყმა.", mgmt_en: "Monitor.", mgmt_ka: "მონიტორინგი.", ectopic: 'ventricle', hasP: true, premature: true, qrsWidth: 1, beatShape: NORMAL_COMPLEX, interval: 40, randomness: 1, noise: 0 },
-  PVC_POLY: { id: 'PVC_POLY', name_en: "PVC (Polymorphic)", name_ka: "პარკუჭოვანი ექსტრასისტოლა (პოლიმორფული)", bpm: 70, desc_en: "Multifocal PVCs.", desc_ka: "მულტიფოკალური PVC.", mgmt_en: "Check lytes.", mgmt_ka: "ელექტროლიტები.", ectopic: 'ventricle_poly', hasP: true, premature: true, qrsWidth: 1, beatShape: NORMAL_COMPLEX, interval: 40, randomness: 1, noise: 0 },
-  // UPDATED TRANSLATIONS FOR PAC
-  PAC_HIGH: { id: 'PAC_HIGH', name_en: "PAC (High Atrium)", name_ka: "წინაგულოვანი ექსტრასისტოლა (მაღალი)", bpm: 70, desc_en: "Early upright P.", desc_ka: "ადრეული დადებითი P.", mgmt_en: "Benign.", mgmt_ka: "კეთილთვისებიანი.", ectopic: 'high_atrium', hasP: true, premature: true, qrsWidth: 1, beatShape: NORMAL_COMPLEX, interval: 40, randomness: 1, noise: 0 },
-  PAC_MID: { id: 'PAC_MID', name_en: "PAC (Mid Atrium)", name_ka: "წინაგულოვანი ექსტრასისტოლა (შუა)", bpm: 70, desc_en: "Biphasic P.", desc_ka: "ბიფაზური P.", mgmt_en: "Benign.", mgmt_ka: "კეთილთვისებიანი.", ectopic: 'mid_atrium', hasP: true, premature: true, qrsWidth: 1, beatShape: PAC_MID_COMPLEX, interval: 40, randomness: 1, noise: 0 },
-  PAC_LOW: { id: 'PAC_LOW', name_en: "PAC (Low Atrium)", name_ka: "წინაგულოვანი ექსტრასისტოლა (დაბალი)", bpm: 70, desc_en: "Inverted P.", desc_ka: "ინვერსიული P.", mgmt_en: "Benign.", mgmt_ka: "კეთილთვისებიანი.", ectopic: 'low_atrium', hasP: true, premature: true, qrsWidth: 1, beatShape: PAC_LOW_COMPLEX, interval: 40, randomness: 1, noise: 0 },
-  
+  PVC_MONO: { id: 'PVC_MONO', name_en: "PVC (Monomorphic)", name_ka: "PVC (მონომორფული)", bpm: 70, desc_en: "Wide ectopic beat.", desc_ka: "განიერი ექტოპიური დარტყმა.", mgmt_en: "Monitor.", mgmt_ka: "მონიტორინგი.", ectopic: 'ventricle', hasP: true, premature: true, qrsWidth: 1, beatShape: NORMAL_COMPLEX, interval: 40, randomness: 1, noise: 0 },
+  PVC_POLY: { id: 'PVC_POLY', name_en: "PVC (Polymorphic)", name_ka: "PVC (პოლიმორფული)", bpm: 70, desc_en: "Multifocal PVCs.", desc_ka: "მულტიფოკალური PVC.", mgmt_en: "Check lytes.", mgmt_ka: "ელექტროლიტები.", ectopic: 'ventricle_poly', hasP: true, premature: true, qrsWidth: 1, beatShape: NORMAL_COMPLEX, interval: 40, randomness: 1, noise: 0 },
+  PAC_HIGH: { id: 'PAC_HIGH', name_en: "PAC (High Atrium)", name_ka: "PAC (მაღალი წინაგული)", bpm: 70, desc_en: "Early upright P.", desc_ka: "ადრეული დადებითი P.", mgmt_en: "Benign.", mgmt_ka: "კეთილთვისებიანი.", ectopic: 'high_atrium', hasP: true, premature: true, qrsWidth: 1, beatShape: NORMAL_COMPLEX, interval: 40, randomness: 1, noise: 0 },
+  PAC_MID: { id: 'PAC_MID', name_en: "PAC (Mid Atrium)", name_ka: "PAC (შუა წინაგული)", bpm: 70, desc_en: "Biphasic P.", desc_ka: "ბიფაზური P.", mgmt_en: "Benign.", mgmt_ka: "კეთილთვისებიანი.", ectopic: 'mid_atrium', hasP: true, premature: true, qrsWidth: 1, beatShape: PAC_MID_COMPLEX, interval: 40, randomness: 1, noise: 0 },
+  PAC_LOW: { id: 'PAC_LOW', name_en: "PAC (Low Atrium)", name_ka: "PAC (დაბალი წინაგული)", bpm: 70, desc_en: "Inverted P.", desc_ka: "ინვერსიული P.", mgmt_en: "Benign.", mgmt_ka: "კეთილთვისებიანი.", ectopic: 'low_atrium', hasP: true, premature: true, qrsWidth: 1, beatShape: PAC_LOW_COMPLEX, interval: 40, randomness: 1, noise: 0 },
   LBBB: { id: 'LBBB', name_en: "Left Bundle Branch Block", name_ka: "LBBB", bpm: 70, desc_en: "Wide notched R.", desc_ka: "განიერი დეფორმირებული R.", mgmt_en: "Check for STEMI.", mgmt_ka: "STEMI-ს გამორიცხვა.", regular: true, hasP: true, qrsWidth: 2.5, morphology: 'notched', delay: 'left', beatShape: LBBB_COMPLEX, interval: 40, randomness: 2, noise: 0 },
   RBBB: { id: 'RBBB', name_en: "Right Bundle Branch Block", name_ka: "RBBB", bpm: 70, desc_en: "Rabbit ears.", desc_ka: "კურდღლის ყურები.", mgmt_en: "Benign/Strain.", mgmt_ka: "კეთილთვისებიანი/გადაძაბვა.", regular: true, hasP: true, qrsWidth: 2.5, morphology: 'rsr', delay: 'right', beatShape: RBBB_COMPLEX, interval: 40, randomness: 2, noise: 0 },
   AV1: { id: 'AV1', name_en: "1st Degree AV Block", name_ka: "AV ბლოკადა I", bpm: 70, desc_en: "Long PR.", desc_ka: "გრძელი PR.", mgmt_en: "Monitor.", mgmt_ka: "მონიტორინგი.", regular: true, hasP: true, prLong: true, qrsWidth: 1, beatShape: AVB1_COMPLEX, interval: 40, randomness: 1, noise: 0 },
@@ -188,7 +207,7 @@ const RHYTHMS = {
   RAH: { id: 'RAH', name_en: "Right Atrial Hypertrophy", name_ka: "მარჯვენა წინაგულის ჰიპერტროფია", bpm: 70, desc_en: "P-Pulmonale.", desc_ka: "P-პულმონალე.", mgmt_en: "Treat cause.", mgmt_ka: "მიზეზის მკურნალობა.", regular: true, hasP: true, pMorph: 'peaked', qrsWidth: 1, force: 'right_atrium', beatShape: RAH_COMPLEX, interval: 40, randomness: 2, noise: 0 },
 };
 
-// --- HELPER COMPONENTS (Unchanged Logic, just rendering) ---
+// --- HELPER COMPONENTS ---
 const ECGGraphStatic = ({ rhythmId, isRunning = true, width = null, height = 200 }) => {
   const canvasRef = useRef(null);
   const dataPoints = useRef([]);
@@ -456,7 +475,7 @@ const SimulatorView = ({ rhythmId, t, lang }) => {
   );
 };
 
-// --- GRIMOIRES ---
+// --- GRIMOIRES (Sub-Components) ---
 
 const StudyGrimoire = ({ t, lang, onBack }) => {
     const [activeRhythm, setActiveRhythm] = useState('NSR');
@@ -547,6 +566,7 @@ const SimulatorGrimoire = ({ t, lang, onBack }) => {
 };
 
 const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }) => {
+    // NEW: Session based Quiz logic (No repeats)
     const [quizState, setQuizState] = useState({ 
         currentAnswer: null, 
         score: 0, 
@@ -554,22 +574,25 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
         targetRhythm: null, 
         showResult: false, 
         choices: [],
-        questionQueue: [], 
+        questionQueue: [], // The deck of cards
         sessionComplete: false
     });
     const [isPaused, setIsPaused] = useState(false);
-    const { playSound } = useSound(); 
+    const { playSound } = useSound(); // Use Sound Hook
 
+    // Initialize Session
     useEffect(() => {
         const keys = Object.keys(RHYTHMS);
         const shuffledQueue = keys.sort(() => 0.5 - Math.random());
+        // Start first round immediately with the shuffled queue
         startNextRound(shuffledQueue, 0, 0);
     }, []);
 
     const startNextRound = (queue, currentScore, currentTotal) => {
         if (queue.length === 0) {
+            // Check for Mastery (Perfect Score)
             if (currentScore === currentTotal && currentTotal > 0) {
-                onMastery();
+                onMastery(); // Trigger daily mastery save
             }
             setQuizState(prev => ({ ...prev, sessionComplete: true, score: currentScore, total: currentTotal }));
             return;
@@ -578,6 +601,7 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
         const nextRhythmId = queue[0];
         const remainingQueue = queue.slice(1);
 
+        // Generate choices
         const keys = Object.keys(RHYTHMS);
         const otherKeys = keys.filter(k => k !== nextRhythmId);
         const shuffledDistractors = otherKeys.sort(() => 0.5 - Math.random()).slice(0, 3);
@@ -601,10 +625,10 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
         const isCorrect = rhythmId === quizState.targetRhythm;
         
         if (isCorrect) {
-            gainXp(2);
+            gainXp(2); // UPDATED TO 2 XP
             playSound('correct');
         } else {
-            takeDamage(); // This deducts a heart in GameContext
+            takeDamage();
             playSound('wrong');
         }
 
@@ -644,6 +668,7 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
     return (
         <div className="flex-1 bg-slate-50 flex flex-col items-center justify-start pt-8 overflow-y-auto pb-20 md:pb-0">
            <div className="w-full max-w-4xl px-4">
+             {/* ADDED EXIT BUTTON HERE */}
              <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors mb-4 font-bold">
                 <ArrowLeft size={20} /> {t.exit}
              </button>
@@ -757,14 +782,21 @@ const CompareGrimoire = ({ t, lang, onBack }) => {
 export default function ECGGame({ onBack }) {
   const [view, setView] = useState('menu'); 
   const { language, theme } = useTheme(); 
-  const { hearts, takeDamage, gainXp, xp } = useGameLogic(); 
+  const { hearts, takeDamage, gainXp, xp, spendXp, tier } = useGameLogic(); 
   const { addToast } = useToast();
 
   const isMagical = theme === 'magical'; 
   const lang = language === 'ka' ? 'ka' : 'en'; 
   const t = TRANSLATIONS[lang]; 
 
+  // Local Access State for Renting
+  const [rentedApps, setRentedApps] = useState({});
   const [isQuizMastered, setIsQuizMastered] = useState(false);
+
+  // --- MODAL STATES ---
+  const [pendingRental, setPendingRental] = useState(null);
+  const [showNoXpModal, setShowNoXpModal] = useState(false);
+  const [missingXpAmount, setMissingXpAmount] = useState(0);
 
   // --- CHECK DAILY MASTERY ---
   useEffect(() => {
@@ -787,6 +819,37 @@ export default function ECGGame({ onBack }) {
       addToast(t.dailyMastered, 'success');
   };
 
+  const hasGrimoireAccess = (id) => {
+      if (id === 'study') return true; 
+      const isSub = ['archmage', 'magus', 'grand_magus', 'insubstantial'].includes(tier);
+      if (isSub) return true;
+      if (rentedApps[id]) return true;
+      return false;
+  };
+
+  // --- REPLACED handleRent with MODAL LOGIC ---
+  const handleSelectGrimoire = (id, cost) => {
+      if (hasGrimoireAccess(id)) {
+          setView(id);
+      } else {
+          if (xp >= cost) {
+              setPendingRental({ id, cost });
+          } else {
+              setMissingXpAmount(cost - xp);
+              setShowNoXpModal(true);
+          }
+      }
+  };
+
+  const confirmRental = () => {
+      if (!pendingRental) return;
+      spendXp(pendingRental.cost);
+      setRentedApps(prev => ({ ...prev, [pendingRental.id]: true }));
+      addToast(lang === 'ka' ? "წვდომა გაიხსნა!" : "Grimoire Unlocked!", "success");
+      setPendingRental(null);
+      setView(pendingRental.id);
+  };
+
   // --- RENDER VIEWS ---
   if (view === 'study') return <StudyGrimoire t={t} lang={lang} onBack={() => setView('menu')} />;
   if (view === 'simulator') return <SimulatorGrimoire t={t} lang={lang} onBack={() => setView('menu')} />;
@@ -797,6 +860,62 @@ export default function ECGGame({ onBack }) {
   return (
     <div className="h-screen bg-slate-900 font-sans text-white flex flex-col items-center justify-center p-6 animate-in fade-in relative">
         
+        {/* --- RENTAL MODAL --- */}
+        {pendingRental && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+                <div className={`relative w-full max-w-md p-8 rounded-3xl border-2 shadow-2xl overflow-hidden text-center ${isMagical ? 'bg-slate-950 border-amber-600 text-amber-50' : 'bg-white border-blue-200 text-slate-900'}`}>
+                    <h3 className={`text-2xl font-bold mb-4 ${isMagical ? 'font-serif text-amber-500' : 'text-slate-800'}`}>
+                        {isMagical ? t.strikeBargain : t.confirmRental}
+                    </h3>
+                    <p className={`mb-8 text-lg ${isMagical ? 'text-amber-100/80' : 'text-slate-600'}`}>
+                        {lang === 'ka' 
+                            ? `იქირავეთ 24 საათით ${pendingRental.cost} XP-ის სანაცვლოდ?`
+                            : `Rent for 24 hours for ${pendingRental.cost} XP?`
+                        }
+                    </p>
+                    <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={confirmRental}
+                            className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all hover:scale-[1.02] ${
+                                isMagical 
+                                ? 'bg-red-900/80 hover:bg-red-800 border border-red-700 text-red-100 shadow-[0_0_15px_rgba(220,38,38,0.3)]' 
+                                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'
+                            }`}
+                        >
+                            {isMagical ? <Feather size={20} /> : <Unlock size={20} />}
+                            {isMagical ? t.signBlood : t.accept}
+                        </button>
+                        <button 
+                            onClick={() => setPendingRental(null)}
+                            className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                                isMagical 
+                                ? 'bg-transparent hover:bg-slate-900 text-slate-500 border border-slate-800' 
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                            }`}
+                        >
+                            {isMagical ? t.refuseBargain : t.refuse}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* --- NO XP MODAL --- */}
+        {showNoXpModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+                <div className={`relative w-full max-w-sm p-8 rounded-3xl border-2 shadow-2xl text-center ${isMagical ? 'bg-slate-900 border-red-900 text-red-100' : 'bg-white border-red-200 text-slate-900'}`}>
+                    <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${isMagical ? 'bg-red-900/30 text-red-500' : 'bg-red-100 text-red-500'}`}>
+                        <AlertTriangle size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2">{isMagical ? t.insufficientPower : t.insufficientXP}</h3>
+                    <p className="mb-8 opacity-80">{isMagical ? t.lackArcane : t.lackXP}</p>
+                    <button onClick={() => setShowNoXpModal(false)} className={`w-full py-3 rounded-xl font-bold transition-all ${isMagical ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
+                        {t.close}
+                    </button>
+                </div>
+            </div>
+        )}
+
         <div className="w-full max-w-5xl">
             <div className="flex items-center gap-4 mb-8">
                 <button onClick={onBack} className="bg-slate-800 p-2 rounded-lg hover:bg-slate-700 transition">
@@ -823,24 +942,34 @@ export default function ECGGame({ onBack }) {
                      <h3 className="text-xl font-bold mb-2">{t.studyMode}</h3>
                      <p className="text-sm text-slate-400 mb-6">Master the theory. Analyze waveforms and pathophysiology.</p>
                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                        {t.freeAccess}
+                        Free Access
                      </div>
                 </button>
 
-                {/* 2. SIMULATOR (Unlocked) */}
-                <button onClick={() => setView('simulator')} className="group relative bg-slate-800 border border-slate-700 p-6 rounded-2xl hover:border-amber-500 transition-all text-left">
+                {/* 2. SIMULATOR (Locked 200XP) */}
+                <button onClick={() => handleSelectGrimoire('simulator', 200)} className="group relative bg-slate-800 border border-slate-700 p-6 rounded-2xl hover:border-amber-500 transition-all text-left">
                      <div className="w-12 h-12 bg-purple-900/30 text-purple-400 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-900/50">
                         <Activity size={24} />
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.simulatorMode}</h3>
                      <p className="text-sm text-slate-400 mb-6">Real-time generation. Visualize anatomical sync.</p>
-                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                        {t.open}
-                     </div>
+                     
+                     {hasGrimoireAccess('simulator') ? (
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
+                            Unlocked
+                        </div>
+                     ) : (
+                        <div className="flex items-center justify-between mt-auto">
+                            <span className="flex items-center gap-1 text-xs font-bold text-slate-500 uppercase"><Lock size={12} /> {t.locked}</span>
+                            <span className="bg-amber-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1 hover:bg-amber-500">
+                                <Clock size={12} /> {t.rent} (200 XP)
+                            </span>
+                        </div>
+                     )}
                 </button>
 
-                {/* 3. QUIZ MODE (Unlocked) */}
-                <button onClick={() => setView('quiz')} className={`group relative bg-slate-800 border p-6 rounded-2xl hover:border-amber-500 transition-all text-left ${isQuizMastered ? 'border-amber-500 shadow-lg shadow-amber-900/20' : 'border-slate-700'}`}>
+                {/* 3. QUIZ MODE (Locked 150XP) */}
+                <button onClick={() => handleSelectGrimoire('quiz', 150)} className={`group relative bg-slate-800 border p-6 rounded-2xl hover:border-amber-500 transition-all text-left ${isQuizMastered ? 'border-amber-500 shadow-lg shadow-amber-900/20' : 'border-slate-700'}`}>
                      {isQuizMastered && (
                          <div className="absolute -top-3 -right-3 bg-amber-500 text-slate-900 p-2 rounded-full shadow-lg animate-bounce">
                              <Crown size={20} fill="currentColor" />
@@ -851,21 +980,41 @@ export default function ECGGame({ onBack }) {
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.quizMode}</h3>
                      <p className="text-sm text-slate-400 mb-6">Spot diagnosis challenge. {Object.keys(RHYTHMS).length} unique rhythms per session.</p>
-                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                        {isQuizMastered ? <span className="text-amber-500 flex items-center gap-1"><Star size={12} fill="currentColor"/> Mastered</span> : t.open}
-                     </div>
+                     
+                     {hasGrimoireAccess('quiz') ? (
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
+                            {isQuizMastered ? <span className="text-amber-500 flex items-center gap-1"><Star size={12} fill="currentColor"/> Mastered</span> : 'Unlocked'}
+                        </div>
+                     ) : (
+                        <div className="flex items-center justify-between mt-auto">
+                            <span className="flex items-center gap-1 text-xs font-bold text-slate-500 uppercase"><Lock size={12} /> {t.locked}</span>
+                            <span className="bg-amber-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1 hover:bg-amber-500">
+                                <Clock size={12} /> {t.rent} (150 XP)
+                            </span>
+                        </div>
+                     )}
                 </button>
 
-                {/* 4. COMPARE MODE (Unlocked) */}
-                <button onClick={() => setView('compare')} className="group relative bg-slate-800 border border-slate-700 p-6 rounded-2xl hover:border-amber-500 transition-all text-left">
+                {/* 4. COMPARE MODE (Locked 300XP) */}
+                <button onClick={() => handleSelectGrimoire('compare', 300)} className="group relative bg-slate-800 border border-slate-700 p-6 rounded-2xl hover:border-amber-500 transition-all text-left">
                      <div className="w-12 h-12 bg-emerald-900/30 text-emerald-400 rounded-xl flex items-center justify-center mb-4 group-hover:bg-emerald-900/50">
                         <SplitSquareHorizontal size={24} />
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.compareMode}</h3>
                      <p className="text-sm text-slate-400 mb-6">Side-by-side analysis against normal baseline.</p>
-                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                        {t.open}
-                     </div>
+                     
+                     {hasGrimoireAccess('compare') ? (
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
+                            Unlocked
+                        </div>
+                     ) : (
+                        <div className="flex items-center justify-between mt-auto">
+                            <span className="flex items-center gap-1 text-xs font-bold text-slate-500 uppercase"><Lock size={12} /> {t.locked}</span>
+                            <span className="bg-amber-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1 hover:bg-amber-500">
+                                <Clock size={12} /> {t.rent} (300 XP)
+                            </span>
+                        </div>
+                     )}
                 </button>
 
             </div>

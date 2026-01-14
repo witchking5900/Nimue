@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { useGameLogic } from '../context/GameContext'; 
+import { useGameLogic } from '../hooks/useGameLogic'; 
+// ADDED: Import the Notification Bell
 import NotificationBell from './NotificationBell'; 
 import { 
   User, Wand2, Stethoscope, Sparkles, Heart, Shield,
@@ -135,7 +136,7 @@ export default function Navbar({ onOpenProfile }) {
             {isMagical ? <Stethoscope size={20} /> : <Wand2 size={20} />}
           </button>
 
-          {/* NOTIFICATION BELL */}
+          {/* ADDED: NOTIFICATION BELL */}
           <NotificationBell />
           
           {/* PROFILE BUTTON */}

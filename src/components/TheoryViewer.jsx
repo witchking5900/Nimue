@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useTheme } from '../context/ThemeContext';
-import { supabase } from '../supabaseClient';
-import { useGameLogic } from '../context/GameContext'; // Changed hook path to context if needed, or keep hooks
+import { supabase } from '/src/supabaseClient.js';
+import { useGameLogic } from '../hooks/useGameLogic';
 import { useToast } from '../context/ToastContext';
 import { 
   Book, ArrowRight, Brain, Loader2, CheckCircle, Crown, RotateCcw, 
@@ -10,6 +10,7 @@ import {
 
 export default function TheoryViewer({ onBack }) {
   const { theme, language } = useTheme();
+  // Using gainXp from GameLogic (which now handles Archmage bypass internally if needed)
   const { completeActivity, completedIds, gainXp } = useGameLogic(); 
   const { addToast } = useToast();
   const isMagical = theme === 'magical';
@@ -26,6 +27,9 @@ export default function TheoryViewer({ onBack }) {
   // Subscription State
   const [subscribedCategories, setSubscribedCategories] = useState([]);
 
+  // Search State
+  const [search, setSearch] = useState("");
+
   // Quiz State
   const [quizState, setQuizState] = useState({
     active: false,
@@ -36,69 +40,6 @@ export default function TheoryViewer({ onBack }) {
   });
 
   const [showMasteryModal, setShowMasteryModal] = useState(false);
-
-  // --- TRANSLATION CONFIG ---
-  const t = {
-    en: {
-        menu: "Menu",
-        back: "Back",
-        // Titles
-        catTitleMagical: "Archives of Knowledge",
-        catTitleStandard: "Clinical Theory",
-        // Empty States
-        noArchives: "No archives found.",
-        noScrollsMagical: "No scrolls found in this archive...",
-        noScrollsStandard: "No cases found in this category.",
-        // Buttons & Status
-        read: "Read",
-        markRead: "Mark as Read",
-        passed: "Passed",
-        takeQuiz: "Take Quiz",
-        retake: "Retake Quiz",
-        returnText: "Return to Text",
-        returnList: "Back to List",
-        finish: "Finish",
-        next: "Next",
-        // Quiz Results
-        masteryMagical: "Inscription Mastered",
-        masteryStandard: "Topic Mastered",
-        continue: "Continue",
-        masteryAchieved: "Mastery Achieved!",
-        keepStudying: "Keep Studying",
-        correct: "Correct!",
-        wrong: "Incorrect"
-    },
-    ka: {
-        menu: "მენიუ",
-        back: "უკან",
-        // Titles
-        catTitleMagical: "ცოდნის არქივები",
-        catTitleStandard: "კლინიკური თეორია",
-        // Empty States
-        noArchives: "არქივები ცარიელია.",
-        noScrollsMagical: "ამ არქივში გრაგნილები არ მოიძებნა...",
-        noScrollsStandard: "ამ კატეგორიაში თეორია არ მოიძებნა.",
-        // Buttons & Status
-        read: "წაკითხულია",
-        markRead: "წაკითხვა",
-        passed: "ჩაბარებულია",
-        takeQuiz: "ქვიზის დაწყება",
-        retake: "თავიდან დაწყება",
-        returnText: "ტექსტზე დაბრუნება",
-        returnList: "სიაში დაბრუნება",
-        finish: "დასრულება",
-        next: "შემდეგი",
-        // Quiz Results
-        masteryMagical: "ჩანაწერი შესწავლილია",
-        masteryStandard: "თემა შესწავლილია",
-        continue: "გაგრძელება",
-        masteryAchieved: "ოსტატი!",
-        keepStudying: "სცადეთ თავიდან",
-        correct: "სწორია!",
-        wrong: "შეცდომაა"
-    }
-  };
-  const text = t[language] || t.en;
 
   // --- XP HELPER ---
   const awardXp = (amount) => {
@@ -117,28 +58,34 @@ export default function TheoryViewer({ onBack }) {
         .select('*');
       
       if (catData) {
+          // Extract simple string names for categories
           const formattedCats = catData.map(c => 
               c.title?.en?.standard || c.title?.standard || c.slug || 'General'
           );
+          // Remove duplicates and sort
           setCategories([...new Set(formattedCats)].sort());
       }
 
       // 2. Fetch Inscriptions
       const { data: dbData } = await supabase
-        .from('theory_posts') 
+        .from('theory_posts') // Ensure this matches your table name (was 'inscriptions' or 'theory_posts'?)
+        // Assuming table name is 'theory_posts' based on previous context. If it's 'inscriptions', change back.
+        // Wait, InscriptionManager uses 'theory_posts'. Let's stick to 'theory_posts'.
         .select(`*`); 
 
       if (dbData) {
+        // Map DB data to Frontend structure
+        // Note: The structure depends on your DB columns. Assuming 'theory_posts' has category column.
         const formattedData = dbData.map(item => ({
             id: item.id, 
             category: item.category || 'General', 
             title: item.title,
             content: item.content,
-            quiz: item.test_data || [] 
+            quiz: item.test_data || [] // Assuming test_data column exists for quizzes
         }));
         setAllInscriptions(formattedData);
         
-        // --- DEEP LINK LOGIC ---
+        // --- DEEP LINK LOGIC (MOVED HERE TO ENSURE DATA EXISTS) ---
         const pendingId = localStorage.getItem('pending_inscription_id');
         if (pendingId) {
             const foundTopic = formattedData.find(t => t.id === pendingId);
@@ -167,6 +114,7 @@ export default function TheoryViewer({ onBack }) {
     fetchData();
   }, []);
 
+  // Filter inscriptions for the selected category
   const currentCategoryInscriptions = useMemo(() => {
       if (!selectedCategory) return [];
       return allInscriptions.filter(i => i.category === selectedCategory);
@@ -174,11 +122,23 @@ export default function TheoryViewer({ onBack }) {
 
   // --- ACTIONS ---
   
+  // THE FIXED SUBSCRIPTION LOGIC
   const toggleSubscription = async (e, categoryName) => {
       e.stopPropagation(); 
-      
+      console.log(`🔔 Subscribe clicked for: "${categoryName}"`);
+
+      // 1. Validation
+      if (!categoryName) {
+        console.error("❌ Error: Category Name is missing!");
+        return;
+      }
+
+      // 2. Auth Check
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+          addToast("Please sign in to subscribe.");
+          return;
+      }
 
       try {
           if (subscribedCategories.includes(categoryName)) {
@@ -191,7 +151,8 @@ export default function TheoryViewer({ onBack }) {
               if (error) throw error;
 
               setSubscribedCategories(prev => prev.filter(c => c !== categoryName));
-              addToast(isMagical ? (language === 'ka' ? "კავშირი გაწყვეტილია." : "Link severed.") : (language === 'ka' ? "გამოწერა გაუქმებულია." : "Unsubscribed."));
+              addToast(isMagical ? "Link severed." : "Unsubscribed.");
+              console.log("✅ Unsubscribed successfully.");
           } else {
               // SUBSCRIBE
               const { error } = await supabase
@@ -201,7 +162,8 @@ export default function TheoryViewer({ onBack }) {
               if (error) throw error;
 
               setSubscribedCategories(prev => [...prev, categoryName]);
-              addToast(isMagical ? (language === 'ka' ? "ბედი შეკრულია." : "Fate bound.") : (language === 'ka' ? "გამოწერილია!" : "Subscribed!"));
+              addToast(isMagical ? "Fate bound." : "Subscribed!");
+              console.log("✅ Subscribed successfully.");
           }
       } catch (err) {
           console.error("❌ Subscription Error:", err.message);
@@ -214,7 +176,7 @@ export default function TheoryViewer({ onBack }) {
     if (typeof obj === 'string') return obj;
     const langObj = obj[language] || obj['en'];
     if (!langObj) return "";
-    return langObj; 
+    return langObj; // Assuming simple string storage now based on InscriptionManager
   };
 
   // --- QUIZ LOGIC ---
@@ -254,17 +216,17 @@ export default function TheoryViewer({ onBack }) {
         <div className="w-full animate-in fade-in">
             <div className="flex items-center gap-4 mb-8">
                  <button onClick={onBack} className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all border ${isMagical ? 'bg-slate-800 border-slate-700 text-amber-100 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-                    <ChevronLeft size={18} /> {text.menu}
+                    <ChevronLeft size={18} /> {language === 'ka' ? 'მენიუ' : 'Menu'}
                  </button>
                  <h1 className={`text-3xl font-bold ${isMagical ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-500 font-serif' : 'text-slate-900'}`}>
-                    {isMagical ? text.catTitleMagical : text.catTitleStandard}
+                    {isMagical ? (language === 'ka' ? "ცოდნის არქივები" : "Archives of Knowledge") : (language === 'ka' ? "კლინიკური თეორია" : "Clinical Theory")}
                  </h1>
             </div>
 
             {/* CATEGORY GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {categories.length === 0 ? (
-                    <div className="col-span-2 text-center opacity-50 p-8">{text.noArchives}</div>
+                    <div className="col-span-2 text-center opacity-50 p-8">No archives found.</div>
                 ) : (
                     categories.map(cat => {
                         const isSubscribed = subscribedCategories.includes(cat);
@@ -295,6 +257,7 @@ export default function TheoryViewer({ onBack }) {
                                         ? (isMagical ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/50' : 'bg-blue-500 text-white shadow-lg')
                                         : (isMagical ? 'bg-slate-800 text-slate-500 hover:text-amber-500' : 'bg-slate-100 text-slate-400 hover:text-blue-500')
                                     }`}
+                                    title={isSubscribed ? "Unsubscribe" : "Subscribe"}
                                 >
                                     {isSubscribed ? <BellRing size={20} fill="currentColor" /> : <Bell size={20} />}
                                 </button>
@@ -325,7 +288,7 @@ export default function TheoryViewer({ onBack }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {currentCategoryInscriptions.length === 0 ? (
                     <div className="col-span-2 text-center opacity-50 p-12 italic">
-                        {isMagical ? text.noScrollsMagical : text.noScrollsStandard}
+                        {isMagical ? "No scrolls found in this archive..." : "No cases found in this category."}
                     </div>
                 ) : (
                     currentCategoryInscriptions.map((topic) => {
@@ -388,7 +351,7 @@ export default function TheoryViewer({ onBack }) {
           })}
         </div>
         {quizState.selectedAnswer && (
-          <div className="mt-6 flex justify-end"><button onClick={nextQuestion} className={`px-6 py-2 rounded-lg font-bold text-white ${isMagical ? 'bg-purple-600' : 'bg-blue-600'}`}>{quizState.currentQuestionIndex + 1 === selectedTopic.quiz.length ? text.finish : text.next} <ArrowRight size={18} className="inline ml-1" /></button></div>
+          <div className="mt-6 flex justify-end"><button onClick={nextQuestion} className={`px-6 py-2 rounded-lg font-bold text-white ${isMagical ? 'bg-purple-600' : 'bg-blue-600'}`}>{quizState.currentQuestionIndex + 1 === selectedTopic.quiz.length ? "Finish" : "Next"} <ArrowRight size={18} className="inline ml-1" /></button></div>
         )}
       </div>
     );
@@ -405,9 +368,9 @@ export default function TheoryViewer({ onBack }) {
                 <div className={`relative mx-auto w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-xl ${isMagical ? 'bg-amber-900/50 text-amber-400 border-2 border-amber-500' : 'bg-blue-100 text-blue-600 border-2 border-blue-200'}`}>
                     <Crown size={48} /><Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-spin-slow" size={32} />
                 </div>
-                <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>{isMagical ? text.masteryMagical : text.masteryStandard}</h2>
+                <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>{language === 'ka' ? "ჩანაწერი შესწავლილია" : "Inscription Mastered"}</h2>
                 <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+10 XP</div>
-                <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{text.continue}</button>
+                <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{language === 'ka' ? "გაგრძელება" : "Continue"}</button>
             </div>
         </div>
     );
@@ -415,12 +378,12 @@ export default function TheoryViewer({ onBack }) {
     return (
         <div className={`p-8 rounded-2xl text-center border-2 ${isMagical ? 'bg-slate-900 border-purple-500' : 'bg-white border-blue-500'}`}>
             {showMasteryModal && <MasteryModal />}
-            <h2 className="text-3xl font-bold mb-4">{isPerfect ? text.masteryAchieved : text.keepStudying}</h2>
+            <h2 className="text-3xl font-bold mb-4">{isPerfect ? (language === 'ka' ? "ოსტატი!" : "Mastery Achieved!") : (language === 'ka' ? "სცადეთ თავიდან" : "Keep Studying")}</h2>
             <div className={`text-6xl font-black mb-2 ${isPerfect ? 'text-green-500' : 'text-red-500'}`}>{percentage}%</div>
             <div className="flex flex-col gap-3 mt-8">
-                {!isPerfect && <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${isMagical ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}><RotateCcw size={20} /> {text.retake}</button>}
-                <button onClick={() => setQuizState({ active: false, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 ${isMagical ? 'bg-slate-800 text-amber-500 border border-slate-700' : 'bg-white text-blue-600 border border-slate-200'}`}><FileText size={20} /> {text.returnText}</button>
-                <button onClick={() => setSelectedTopic(null)} className={`w-full py-3 rounded-xl font-bold opacity-70 hover:opacity-100 ${isMagical ? 'bg-slate-800' : 'bg-slate-100 text-slate-600'}`}>{text.returnList}</button>
+                {!isPerfect && <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${isMagical ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}><RotateCcw size={20} /> {language === 'ka' ? "თავიდან დაწყება" : "Retake Quiz"}</button>}
+                <button onClick={() => setQuizState({ active: false, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 ${isMagical ? 'bg-slate-800 text-amber-500 border border-slate-700' : 'bg-white text-blue-600 border border-slate-200'}`}><FileText size={20} /> {language === 'ka' ? "ტექსტზე დაბრუნება" : "Return to Text"}</button>
+                <button onClick={() => setSelectedTopic(null)} className={`w-full py-3 rounded-xl font-bold opacity-70 hover:opacity-100 ${isMagical ? 'bg-slate-800' : 'bg-slate-100 text-slate-600'}`}>{language === 'ka' ? "სიაში დაბრუნება" : "Back to List"}</button>
             </div>
         </div>
     );
@@ -438,7 +401,7 @@ export default function TheoryViewer({ onBack }) {
   return (
     <div className={`p-6 md:p-10 rounded-3xl border relative flex flex-col min-h-[60vh] ${isMagical ? 'bg-slate-900/80 border-amber-900/30' : 'bg-white border-slate-200 shadow-xl'}`}>
       <div className="mb-8 pb-4 border-b border-opacity-10 border-slate-500">
-        <button onClick={() => setSelectedTopic(null)} className="mb-4 text-xs opacity-50 hover:opacity-100 flex items-center gap-1 uppercase tracking-widest font-bold"><ChevronLeft size={14} /> {text.back}</button>
+        <button onClick={() => setSelectedTopic(null)} className="mb-4 text-xs opacity-50 hover:opacity-100 flex items-center gap-1 uppercase tracking-widest font-bold"><ChevronLeft size={14} /> {language === 'ka' ? "უკან" : "Back"}</button>
         <h2 className={`text-4xl font-bold ${isMagical ? 'text-amber-100 font-serif' : 'text-slate-900'}`}>{getText(selectedTopic.title)}</h2>
         <div className={`mt-2 text-sm font-bold uppercase tracking-wider ${isMagical ? 'text-amber-600' : 'text-blue-500'}`}>{selectedTopic.category}</div>
       </div>
@@ -451,11 +414,11 @@ export default function TheoryViewer({ onBack }) {
 
       <div className={`mt-auto pt-8 border-t border-opacity-10 border-slate-500 flex flex-col md:flex-row gap-4`}>
         <button onClick={handleMarkAsRead} disabled={isRead} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isRead ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' : 'bg-slate-100 text-slate-400 cursor-not-allowed') : (isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-900/20' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/20')}`}>
-            {isMagical ? <Scroll size={20} /> : <CheckCircle size={20} />} {isRead ? text.read : text.markRead}
+            {isMagical ? <Scroll size={20} /> : <CheckCircle size={20} />} {isRead ? (language === 'ka' ? "წაკითხულია" : "Read") : (language === 'ka' ? "წაკითხვა" : "Mark as Read")}
         </button>
         {selectedTopic.quiz && selectedTopic.quiz.length > 0 && (
             <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} disabled={isMastered} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isMastered ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50 border border-slate-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200') : (isMagical ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/20')}`}>
-                {isMastered ? <Crown size={20} /> : <Brain size={20} />} {isMastered ? text.passed : text.takeQuiz}
+                {isMastered ? <Crown size={20} /> : <Brain size={20} />} {isMastered ? (language === 'ka' ? "ჩაბარებულია" : "Passed") : (language === 'ka' ? "ქვიზის დაწყება" : "Take Quiz")}
             </button>
         )}
       </div>

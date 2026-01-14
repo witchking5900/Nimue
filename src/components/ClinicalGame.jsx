@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useTheme } from '../context/ThemeContext';
-import { useGameLogic } from '../context/GameContext'; 
+import { useGameLogic } from '../hooks/useGameLogic'; 
 import { useToast } from '../context/ToastContext'; 
 import { useSound } from '../hooks/useSound'; 
-import { supabase } from '../supabaseClient'; 
+import { supabase } from '/src/supabaseClient.js'; 
 import { clinicalCases as staticCases } from '../data/cases'; 
 
 // 🔥 GRIMOIRE IMPORTS
@@ -26,18 +26,18 @@ const GRIMOIRES = [
       icon: Skull,
       color: "text-purple-600",
       bg: "bg-purple-600/10",
-      isFree: true // Now Free for everyone
+      isFree: false
     }
 ];
 
 export default function ClinicalGame({ onBack }) {
   const { theme, language } = useTheme();
-  const { user } = useAuth(); 
+  const { user } = useAuth(); // 🔥 GET USER FOR SAVING MISTAKES
   
   const { 
     hearts, xp, spendXp, takeDamage, 
-    tier, completeActivity, completedIds,
-    buyHeartWithXp
+    hasAccess, tier, completeActivity, completedIds,
+    buyHeartWithXp, buyFullRestore
   } = useGameLogic(); 
   
   const { addToast } = useToast();
@@ -56,9 +56,9 @@ export default function ClinicalGame({ onBack }) {
   const [selectedCategory, setSelectedCategory] = useState("All");
   
   const [isFinished, setIsFinished] = useState(false);
-  const [isGameOver, setIsGameOver] = useState(false); // Ran out of hearts
-  const [isCaseFailed, setIsCaseFailed] = useState(false); // Kicked out for mistakes
-  const [mistakeCount, setMistakeCount] = useState(0); 
+  const [isGameOver, setIsGameOver] = useState(false); // Ran out of hearts (Global)
+  const [isCaseFailed, setIsCaseFailed] = useState(false); // Failed specific case (Too many mistakes)
+  const [mistakeCount, setMistakeCount] = useState(0); // Track mistakes per case
 
   const [shake, setShake] = useState(false);
   const [hasMadeMistake, setHasMadeMistake] = useState(false);
@@ -72,11 +72,10 @@ export default function ClinicalGame({ onBack }) {
   const [pendingHintStepId, setPendingHintStepId] = useState(null);
   const [uiTicker, setUiTicker] = useState(0);
 
-  // --- HEART MODAL STATE ---
+  // --- NEW: HEART MODAL STATE ---
   const [showHeartModal, setShowHeartModal] = useState(false);
 
-  // Keep Admin override for testing, but remove general restrictions
-  const isAdmin = ['archmage', 'insubstantial'].includes(tier);
+  const isUnlimitedUser = ['archmage', 'insubstantial'].includes(tier);
 
   // FETCH DB DATA
   useEffect(() => {
@@ -97,11 +96,7 @@ export default function ClinicalGame({ onBack }) {
 
   // --- HINT REGENERATION LOGIC ---
   useEffect(() => {
-    // Admins get infinite hints, everyone else uses daily limit
-    if (isAdmin) {
-        setFreeHintsLeft(99); 
-        return;
-    }
+    if (isUnlimitedUser) return;
 
     const storedCount = parseInt(localStorage.getItem('daily_hints') || '2', 10);
     const storedTarget = parseInt(localStorage.getItem('hint_regen_target') || '0', 10);
@@ -113,7 +108,7 @@ export default function ClinicalGame({ onBack }) {
         setFreeHintsLeft(storedCount);
         setHintRegenTarget(storedTarget || null);
     }
-  }, [tier, isAdmin]);
+  }, [tier, isUnlimitedUser]);
 
   // --- LIVE TIMER FOR UI ---
   useEffect(() => {
@@ -200,9 +195,12 @@ export default function ClinicalGame({ onBack }) {
         setShake(true);
         setHasMadeMistake(true);
         
-        // --- 🔥 GRIMOIRE INTEGRATION 🔥 ---
+        // --- 🔥 GRIMOIRE INTEGRATION (UPDATED) 🔥 ---
+        // Save the mistake + the correct answer for the "Reveal" feature
         if (user) {
             const currentQuestion = activeScenario.steps[currentStep];
+            
+            // Find the correct option to save it
             const correctOption = currentQuestion.options.find(opt => opt.correct);
 
             saveMistake(
@@ -212,22 +210,27 @@ export default function ClinicalGame({ onBack }) {
                 { 
                     title: getText(activeScenario.title), 
                     question: getText(currentQuestion.question),
+                    
+                    // Save User's Choice
                     userAnswer: getText(option.text),
-                    userFeedback: getText(option.feedback),
+                    userFeedback: getText(option.feedback), // Why they were wrong
+
+                    // Save Correct Answer (Hidden until paid for)
                     correctAnswer: getText(correctOption?.text || "Unknown"),
                     correctFeedback: getText(correctOption?.feedback || "No explanation available.")
                 }
             );
         }
+        // ----------------------------------
 
-        // 1. ALWAYS TAKE DAMAGE
+        // 1. ALWAYS TAKE DAMAGE ON MISTAKE
         takeDamage(1); 
 
         // 2. CHECK FOR FAILURE (KICK OUT)
         const newMistakeCount = mistakeCount + 1;
         setMistakeCount(newMistakeCount);
 
-        // KICK OUT ON 2ND MISTAKE (Strict Mode)
+        // KICK OUT ON 2ND MISTAKE (>= 2)
         if (newMistakeCount >= 2) {
             setTimeout(() => {
                 setIsCaseFailed(true);
@@ -273,7 +276,7 @@ export default function ClinicalGame({ onBack }) {
           }
 
       } else {
-          // Completed but imperfect
+          // Mistakes made: Mark as completed (read), but NOT mastered, NO XP
           completeActivity(caseId, 0);
       }
   };
@@ -281,8 +284,7 @@ export default function ClinicalGame({ onBack }) {
   const handleRevealClick = (stepId) => {
     if (revealedHints[stepId]) return;
     
-    // Admins bypass cost
-    if (isAdmin) {
+    if (isUnlimitedUser) {
         setRevealedHints(prev => ({ ...prev, [stepId]: true }));
         return;
     }
@@ -292,7 +294,7 @@ export default function ClinicalGame({ onBack }) {
         let newTarget = hintRegenTarget;
 
         if (freeHintsLeft === 2) {
-            newTarget = Date.now() + (24 * 60 * 60 * 1000); // 24h cooldown
+            newTarget = Date.now() + (24 * 60 * 60 * 1000);
         }
 
         updateHintState(newCount, newTarget);
@@ -321,6 +323,16 @@ export default function ClinicalGame({ onBack }) {
       }
   };
 
+  const buyRefill = () => {
+      if (confirm(language === 'ka' ? "დაადასტურეთ გადახდა: 2.00 GEL" : "Confirm payment: 2.00 GEL")) {
+          updateHintState(2, null);
+          setRevealedHints(prev => ({ ...prev, [pendingHintStepId]: true }));
+          addToast(language === 'ka' ? "მინიშნებები აღდგენილია!" : "Hints fully restored!", 'success');
+          setShowHintModal(false);
+          setPendingHintStepId(null);
+      }
+  };
+
   // --- HEART PURCHASE HANDLERS ---
   const handleBuyHeart = () => {
       const result = buyHeartWithXp();
@@ -331,6 +343,30 @@ export default function ClinicalGame({ onBack }) {
       } else {
           addToast(result.message, "error");
       }
+  };
+
+  const handleFullRestore = () => {
+      if (confirm(language === 'ka' ? "დაადასტურეთ გადახდა: 1.00 GEL" : "Confirm payment: 1.00 GEL")) {
+          const result = buyFullRestore();
+          if (result.success) {
+              playSound('correct');
+              setShowHeartModal(false);
+              addToast(result.message, "success");
+          } else {
+              addToast(result.message, "error");
+          }
+      }
+  };
+
+  const restart = () => {
+    setActiveScenario(null); 
+    setCurrentStep(0);
+    setSelectedOption(null);
+    setIsFinished(false);
+    setIsGameOver(false);
+    setIsCaseFailed(false);
+    setRevealedHints({});
+    setShowPerfectModal(false);
   };
 
   // --- RENDER 1: CASE LIST ---
@@ -352,22 +388,26 @@ export default function ClinicalGame({ onBack }) {
     return (
       <div className={`w-full max-w-4xl mx-auto animate-in fade-in zoom-in duration-300 p-4 pb-20`}>
         
-        {/* --- HEART RESTORE MODAL (XP ONLY) --- */}
+        {/* --- NEW: HEART RESTORE MODAL --- */}
         {showHeartModal && (
             <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
                 <div className={`relative w-full max-w-sm p-8 rounded-3xl border-2 shadow-2xl text-center ${isMagical ? 'bg-slate-900 border-red-900 text-red-100' : 'bg-white border-red-200 text-slate-900'}`}>
+                    
                     <div className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6 ${isMagical ? 'bg-red-900/30 text-red-500 shadow-[0_0_15px_rgba(220,38,38,0.4)]' : 'bg-red-100 text-red-500'}`}>
                         {isMagical ? <Ghost size={40} /> : <Heart size={40} fill="currentColor" />}
                     </div>
+
                     <h3 className={`text-2xl font-bold mb-2 ${isMagical ? 'font-serif text-red-400' : 'text-slate-900'}`}>
                         {isMagical 
                             ? (language === 'ka' ? "არასაკმარისი სასიცოცხლო ესენცია" : "Not enough life essence") 
                             : (language === 'ka' ? "არასაკმარისი სიცოცხლეები" : "Not enough lives")
                         }
                     </h3>
+                    
                     <p className="mb-8 opacity-80 text-sm">
                         {language === 'ka' ? "განაგრძეთ სწავლა ენერგიის აღდგენით." : "Restore vitality to continue your journey."}
                     </p>
+
                     <div className="space-y-3 mb-6">
                         <button onClick={handleBuyHeart} className={`w-full p-4 rounded-xl border flex justify-between items-center transition-all group ${xp >= 50 ? (isMagical ? 'bg-slate-800 border-slate-700 hover:border-amber-500' : 'bg-slate-50 border-slate-200 hover:border-blue-400') : 'opacity-50 cursor-not-allowed'}`} disabled={xp < 50}>
                             <div className="flex items-center gap-3">
@@ -376,7 +416,16 @@ export default function ClinicalGame({ onBack }) {
                             </div>
                             <div className={`font-bold ${isMagical ? 'text-amber-500' : 'text-blue-600'}`}>50 XP</div>
                         </button>
+
+                        <button onClick={handleFullRestore} className={`w-full p-4 rounded-xl border flex justify-between items-center transition-all group ${isMagical ? 'bg-red-900/20 border-red-800 hover:bg-red-900/40' : 'bg-green-50 border-green-200 hover:bg-green-100'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${isMagical ? 'bg-red-900 text-red-200' : 'bg-white text-green-600'}`}><Zap size={18} /></div>
+                                <div className="text-left"><div className="font-bold text-sm">{language === 'ka' ? "სრული აღდგენა" : "Full Restore"}</div></div>
+                            </div>
+                            <div className={isMagical ? 'text-red-300' : 'text-green-700'}>1.00 GEL</div>
+                        </button>
                     </div>
+
                     <button onClick={() => setShowHeartModal(false)} className={`w-full py-3 rounded-xl font-bold transition-all ${isMagical ? 'bg-transparent hover:bg-slate-800 text-slate-500 border border-slate-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
                         {isMagical ? (language === 'ka' ? "გაუქმება" : "Dismiss") : (language === 'ka' ? "დახურვა" : "Close")}
                     </button>
@@ -477,8 +526,11 @@ export default function ClinicalGame({ onBack }) {
   if (isGameOver) {
     return (
       <div className="flex flex-col items-center justify-center p-8 text-center animate-in zoom-in min-h-[50vh]">
+        
+        {/* Reuse Heart Modal Logic if needed or show direct UI */}
         {showHeartModal && (
             <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+                {/* Same Modal Content As Above */}
                 <div className={`relative w-full max-w-sm p-8 rounded-3xl border-2 shadow-2xl text-center ${isMagical ? 'bg-slate-900 border-red-900 text-red-100' : 'bg-white border-red-200 text-slate-900'}`}>
                     <div className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6 ${isMagical ? 'bg-red-900/30 text-red-500 shadow-[0_0_15px_rgba(220,38,38,0.4)]' : 'bg-red-100 text-red-500'}`}>
                         {isMagical ? <Ghost size={40} /> : <Heart size={40} fill="currentColor" />}
@@ -508,12 +560,14 @@ export default function ClinicalGame({ onBack }) {
             <Plus size={18} /> {language === 'ka' ? 'სიცოცხლის ყიდვა' : 'Buy Life'}
           </button>
           
+          {/* --- ADDED HOME BUTTON --- */}
           <button 
             onClick={() => setActiveScenario(null)} 
             className="w-full py-3 rounded-xl font-bold border-2 border-slate-200 text-slate-500 hover:bg-slate-50 transition-all flex items-center justify-center gap-2 mt-2"
           >
             <Home size={18} /> {language === 'ka' ? 'მთავარი' : 'Home'}
           </button>
+
         </div>
       </div>
     );
@@ -584,7 +638,7 @@ export default function ClinicalGame({ onBack }) {
         </div>
       )}
 
-      {/* --- HINT PURCHASE MODAL (XP ONLY) --- */}
+      {/* --- HINT PURCHASE MODAL --- */}
       {showHintModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
             <div className={`w-full max-w-sm p-6 rounded-2xl shadow-2xl border-2 ${isMagical ? 'bg-slate-900 border-amber-500 text-amber-50' : 'bg-white border-blue-500 text-slate-900'}`}>
@@ -597,6 +651,10 @@ export default function ClinicalGame({ onBack }) {
                     <button onClick={buyOneHint} className={`w-full p-4 rounded-xl border flex justify-between items-center transition-all ${xp >= 100 ? (isMagical ? 'bg-purple-900/20 border-purple-500 hover:bg-purple-900/40' : 'bg-purple-50 border-purple-300 hover:bg-purple-100') : 'opacity-50 cursor-not-allowed bg-slate-100 border-slate-200'}`} disabled={xp < 100}>
                         <div className="text-left"><div className="font-bold flex items-center gap-2"><Gem size={16} className="text-purple-500" />{language === 'ka' ? '1 მინიშნება' : '1 Hint'}</div><div className="text-xs opacity-60">{language === 'ka' ? 'ერთჯერადი გამოყენება' : 'One-time use'}</div></div>
                         <div className="font-bold text-purple-500">100 XP</div>
+                    </button>
+                    <button onClick={buyRefill} className={`w-full p-4 rounded-xl border flex justify-between items-center transition-all ${isMagical ? 'bg-amber-900/20 border-amber-500 hover:bg-amber-900/40' : 'bg-green-50 border-green-500 hover:bg-green-100'}`}>
+                        <div className="text-left"><div className="font-bold flex items-center gap-2"><Zap size={16} className={isMagical ? "text-amber-500" : "text-green-600"} />{language === 'ka' ? 'სრული აღდგენა' : 'Full Restore'}</div><div className="text-xs opacity-60">{language === 'ka' ? 'აღადგენს 2 მინიშნებას' : 'Restores daily limit (2)'}</div></div>
+                        <div className={isMagical ? "font-bold text-amber-500" : "font-bold text-green-600"}>2.00 GEL</div>
                     </button>
                 </div>
                 <button onClick={() => { setShowHintModal(false); setPendingHintStepId(null); }} className="mt-6 text-sm opacity-50 hover:opacity-100 w-full text-center">{language === 'ka' ? 'გაუქმება' : 'Cancel'}</button>
@@ -649,7 +707,7 @@ export default function ClinicalGame({ onBack }) {
                     {isMagical ? <Zap size={18} /> : <AlertCircle size={18} />}
                     {isMagical ? (language === 'ka' ? 'უზენაესი ჯადოქრის დახმარება' : 'Consult with Archmage') : (language === 'ka' ? 'მინიშნების ნახვა' : 'Reveal Hint')}
                     <span className="text-xs opacity-70 ml-1">
-                        ({isAdmin ? 'Unlimited' : (freeHintsLeft > 0 ? `${freeHintsLeft} left` : `Refills in ${getHintTimeLeft()}`)})
+                        ({isUnlimitedUser ? 'Unlimited' : (freeHintsLeft > 0 ? `${freeHintsLeft} left` : `Refills in ${getHintTimeLeft()}`)})
                     </span>
                 </button>
               ) : (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { Lock, Key, Mail, Wand2, Activity, Globe, Scroll, X, ShieldAlert, User, Feather } from 'lucide-react';
+import { Lock, Key, Mail, Wand2, Activity, Globe, Scroll, X, ShieldAlert, User, Feather } from 'lucide-react'; // Added Feather icon for Name
 
 export default function AuthModal() {
   const { signIn, signUp } = useAuth();
@@ -11,7 +11,7 @@ export default function AuthModal() {
   const [isLogin, setIsLogin] = useState(true);
   
   // Form State
-  const [fullName, setFullName] = useState(''); 
+  const [fullName, setFullName] = useState(''); // New State for Name & Surname
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,10 +46,8 @@ export default function AuthModal() {
       errorTerms: "You must swear the oath (Accept Terms).",
       termsTitleStd: "Terms of Service",
       termsTitleMagic: "The Binding Oath",
-      
-      // Terms: Adjusted to reflect that while the system is open, Admins still ban for toxicity
-      termsBodyStd: "By registering, you agree to maintain professional conduct. While access restrictions have been lifted, the Administration reserves the right to terminate accounts for toxic behavior, harassment, or malicious sharing of sensitive content.",
-      termsBodyMagic: "By inscribing your name, you enter a pact of free will. The library is open to all who seek knowledge. However, the High Council (Admins) watches. Those who spread darkness (toxicity) or betrayal shall be cast out into the void."
+      termsBodyStd: "By registering, you agree strictly not to share your account credentials with others or distribute any content (including screenshots or screen recordings). Violation of this policy is a breach of contract and will result in immediate account termination and a permanent ban from the platform.",
+      termsBodyMagic: "By inscribing your true name, you swear a binding oath to the High Council. You shall not share your Essence (Account) with mortals, nor reveal the Hidden Knowledge (Screenshots) to the uninitiated. Be warned: Breaking this vow is a crime against the Order. Those found guilty shall have their names struck from the book, and their souls cast into the Furnace of Souls for eternity."
     },
     ka: {
       titleMagic: isLogin ? "წარადგინე თავი" : "სულის ჩაწერა",
@@ -72,10 +70,8 @@ export default function AuthModal() {
       errorTerms: "თქვენ უნდა დადოთ ფიცი (დაეთანხმეთ წესებს).",
       termsTitleStd: "გამოყენების წესები",
       termsTitleMagic: "ფიცი და პირობა",
-      
-      // Terms: Updated for "We Fight" protocol (Freedom + Admin Power)
-      termsBodyStd: "რეგისტრაციით თქვენ ეთანხმებით პროფესიულ ეთიკას. მიუხედავად იმისა, რომ სისტემური შეზღუდვები მოხსნილია, ადმინისტრაცია იტოვებს უფლებას დაბლოკოს მომხმარებელი ტოქსიკური ქცევის, შეურაცხყოფის ან მასალების ბოროტად გამოყენების შემთხვევაში.",
-      termsBodyMagic: "თქვენი სახელის ჩაწერით თქვენ დებთ ნების თავისუფლების აღთქმას. ბიბლიოთეკა ღიაა ყველასთვის, ვისაც ცოდნა სწყურია. თუმცა, გახსოვდეთ: უმაღლესი საბჭო (ადმინები) ფხიზლობს. ისინი, ვინც სიბნელეს (ტოქსიკურობას) გაავრცელებენ, გაძევებულ იქნებიან სამუდამოდ."
+      termsBodyStd: "რეგისტრაციით თქვენ ადასტურებთ, რომ არ გადასცემთ თქვენს ანგარიშს მესამე პირებს და არ გაავრცელებთ პლატფორმის მასალებს (მათ შორის სქრინშოტებს). ამ წესის დარღვევა გამოიწვევს ანგარიშის დაუყოვნებლივ გაუქმებას და პლატფორმიდან სამუდამოდ დაბლოკვას.",
+      termsBodyMagic: "ბნელ გრიმუარში თქვენი სახელის ჩაწერით თქვენ ფიცს დებთ უმაღლესი საბჭოს წინაშე. არ გაუზიაროთ სხვას თქვენი კარიბჭის გასაღები, არ გათქვათ საიდუმლო ცოდნა (სქრინშოტები). გაფრთხილება: უმაღლესი საბჭოსადმი მიცემული ფიცის გატეხვა უმძიმესი დანაშაულია. დამნაშავეთა სახელები სამარადჟამოდ წაიშლება სიცოცხლის წიგნიდან და მათი სულები სამუდამოდ გამომწყვდეულები იქნებიან ლიმბოში."
     }
   };
 

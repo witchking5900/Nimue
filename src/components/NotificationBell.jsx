@@ -5,7 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function NotificationBell() {
-  const { theme, language } = useTheme();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -13,91 +13,71 @@ export default function NotificationBell() {
   const dropdownRef = useRef(null);
   const isMagical = theme === 'magical';
 
-  // --- TEXT CONFIG ---
-  const t = {
-    en: {
-        title: isMagical ? "Whispers" : "Notifications",
-        markAll: "Mark all read",
-        empty: isMagical ? "The void is silent..." : "No new notifications",
-        bounty: "BOUNTY",
-        report: "REPORT",
-        system: "SYSTEM"
-    },
-    ka: {
-        title: isMagical ? "ჩურჩული" : "შეტყობინებები",
-        markAll: "წაკითხულად მონიშვნა",
-        empty: isMagical ? "სიჩუმეა..." : "შეტყობინებები არ არის",
-        bounty: "ჯილდო",
-        report: "რეპორტი",
-        system: "სისტემა"
-    }
-  };
-  const text = t[language] || t.en;
+  // --- 1. FETCH FUNCTION ---
+  const fetchLatest = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-  // --- 1. FETCH & LISTEN ---
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      if (data) {
+        setNotifications(data);
+        setUnreadCount(data.filter(n => !n.is_read).length);
+      }
+  };
+
   useEffect(() => {
     let channel;
+    
+    // A. Initial Load
+    fetchLatest();
 
-    const setupNotifications = async () => {
-        // Get user first so we can filter subscription
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // A. Initial Fetch
-        const { data } = await supabase
-            .from('notifications')
-            .select('*')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(20);
-        
-        if (data) {
-            setNotifications(data);
-            setUnreadCount(data.filter(n => !n.is_read).length);
+    // B. Realtime Listener
+    channel = supabase
+      .channel('notification_bell')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
+        (payload) => {
+          supabase.auth.getUser().then(({ data: { user } }) => {
+              if (user && payload.new.user_id === user.id) {
+                  fetchLatest();
+              }
+          });
         }
-
-        // B. Realtime Listener (THE FIX)
-        channel = supabase
-            .channel('notification_bell')
-            .on(
-                'postgres_changes',
-                { 
-                    event: 'INSERT', 
-                    schema: 'public', 
-                    table: 'notifications',
-                    filter: `user_id=eq.${user.id}` // Only listen for YOUR notifications
-                },
-                (payload) => {
-                    // Instant UI Update (No refetch needed)
-                    const newNote = payload.new;
-                    setNotifications(prev => [newNote, ...prev]);
-                    setUnreadCount(prev => prev + 1);
-                }
-            )
-            .subscribe();
-    };
-
-    setupNotifications();
+      )
+      .subscribe();
 
     return () => {
-        if (channel) supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, []);
 
-  // --- ACTIONS ---
+  // --- ACTIONS (DEBUG VERSION) ---
   
   const markAsRead = async (id, e) => {
     if (e) e.stopPropagation();
 
-    // 1. Optimistic Update
+    // 1. Optimistic Update (Update UI first)
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
 
     // 2. Database Update
-    await supabase
+    const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('id', id);
+    
+    // 3. DEBUG ALERT: If this pops up, it is 100% a Database Permission issue
+    if (error) {
+        alert(`⚠️ DATABASE ERROR:\n${error.message}\n\nHint: ${error.hint || 'Check RLS Policies'}`);
+        fetchLatest(); // Revert UI
+    }
   };
 
   const handleNotificationClick = (n) => {
@@ -108,17 +88,22 @@ export default function NotificationBell() {
 
   const clearAll = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
     
     // 1. Optimistic Update
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
 
     // 2. Database Update
-    await supabase
+    const { error } = await supabase
         .from('notifications')
         .update({ is_read: true })
         .eq('user_id', user.id);
+
+    // 3. DEBUG ALERT
+    if (error) {
+        alert(`⚠️ DATABASE ERROR:\n${error.message}`);
+        fetchLatest(); // Revert UI
+    }
   };
 
   // --- CLICK OUTSIDE TO CLOSE ---
@@ -147,16 +132,16 @@ export default function NotificationBell() {
       {isOpen && (
         <div className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border-2 z-50 animate-in slide-in-from-top-2 ${isMagical ? 'bg-slate-900 border-amber-600 shadow-amber-900/50' : 'bg-white border-slate-200'}`}>
           <div className={`p-3 border-b flex justify-between items-center ${isMagical ? 'border-amber-500/30' : 'border-slate-100'}`}>
-            <span className={`font-bold text-sm ${isMagical ? 'text-amber-100' : 'text-slate-800'}`}>{text.title}</span>
+            <span className={`font-bold text-sm ${isMagical ? 'text-amber-100' : 'text-slate-800'}`}>Notifications</span>
             {unreadCount > 0 && (
                 <button onClick={clearAll} className="text-xs flex items-center gap-1 opacity-60 hover:opacity-100 hover:underline">
-                    <CheckCheck size={12}/> {text.markAll}
+                    <CheckCheck size={12}/> Mark all read
                 </button>
             )}
           </div>
           <div className="flex flex-col">
             {notifications.length === 0 ? (
-              <div className={`p-8 text-center text-sm italic ${isMagical ? 'text-slate-500' : 'text-slate-400'}`}>{text.empty}</div>
+              <div className={`p-8 text-center text-sm italic ${isMagical ? 'text-slate-500' : 'text-slate-400'}`}>No new whispers...</div>
             ) : (
               notifications.map(n => (
                 <div 
@@ -165,9 +150,7 @@ export default function NotificationBell() {
                   className={`p-4 border-b cursor-pointer transition-colors relative text-left ${isMagical ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50'} ${!n.is_read ? (isMagical ? 'bg-amber-900/20' : 'bg-blue-50') : ''}`}
                 >
                   {!n.is_read && <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-red-500" />}
-                  <div className={`text-[10px] font-bold uppercase mb-1 ${n.type === 'bounty' ? 'text-green-500' : n.type === 'report' ? 'text-red-500' : isMagical ? 'text-amber-500' : 'text-blue-500'}`}>
-                      {text[n.type] || n.type}
-                  </div>
+                  <div className={`text-[10px] font-bold uppercase mb-1 ${n.type === 'bounty' ? 'text-green-500' : n.type === 'report' ? 'text-red-500' : isMagical ? 'text-amber-500' : 'text-blue-500'}`}>{n.type}</div>
                   <div className={`text-sm font-bold mb-1 leading-tight ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>{n.title}</div>
                   <div className={`text-xs leading-snug ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>{n.message}</div>
                   <div className="text-[10px] opacity-30 mt-2 text-right">{new Date(n.created_at).toLocaleDateString()}</div>

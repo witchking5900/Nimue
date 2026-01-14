@@ -3,25 +3,25 @@ import { Routes, Route, Navigate, useSearchParams, useNavigate } from 'react-rou
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { GameProvider, useGameLogic } from './context/GameContext'; 
+
+// --- CRITICAL RESTORATION ---
 import { ToastProvider, useToast } from './context/ToastContext';
 
-// --- COMPONENTS ---
+// --- SECURITY SHIELD ---
+import SecurityOverlay from './components/SecurityOverlay';
+
 import Navbar from './components/Navbar';
 import WelcomeModal from './components/WelcomeModal';
 import TheoryViewer from './components/TheoryViewer';
 import AppsMenu from './components/AppsMenu';
 import AuthModal from './components/AuthModal'; 
 import ProfileView from './components/ProfileView'; 
+import CommunityHub from './pages/CommunityHub'; 
+import Grimoire from './pages/Grimoire'; // ✅ IMPORT GRIMOIRE
+import { Book, GraduationCap, LogOut, ChevronLeft, Users, Crown } from 'lucide-react'; 
 
-// --- RESTORED ADMIN IMPORTS ---
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
-
-// --- PAGES ---
-import CommunityHub from './pages/CommunityHub'; 
-import Grimoire from './pages/Grimoire'; 
-
-import { Book, GraduationCap, LogOut, ChevronLeft, Users, Crown } from 'lucide-react'; 
 
 const translations = {
   en: {
@@ -34,9 +34,7 @@ const translations = {
     appsStandard: "Clinical Apps",
     appsMagical: "Grimoires",
     communityStandard: "Conference Room",
-    communityMagical: "Council of Elders",
-    signOut: "Sign Out",
-    menu: "Menu"
+    communityMagical: "Council of Elders"
   },
   ka: {
     magicalTitle: "გრიმუარი გელოდებათ",
@@ -48,13 +46,30 @@ const translations = {
     appsStandard: "კლინიკური აპლიკაციები",
     appsMagical: "გრიმუარები",
     communityStandard: "საკონფერენციო",
-    communityMagical: "უხუცესთა საბჭო",
-    signOut: "გასვლა",
-    menu: "მენიუ"
+    communityMagical: "უხუცესთა საბჭო"
   }
 };
 
+// --- PROTECTED GRIMOIRE WRAPPER ---
+// This component checks rank before showing the page
 const GrimoireRoute = () => {
+    const { tier } = useGameLogic();
+    const { addToast } = useToast();
+    const navigate = useNavigate();
+    
+    // Allowed Ranks
+    const allowedTiers = ['magus', 'grand_magus', 'insubstantial', 'archmage'];
+    const hasAccess = allowedTiers.includes(tier);
+
+    useEffect(() => {
+        if (!hasAccess) {
+            addToast("Only Magus rank and above can enter the Grimoire.", "error");
+            navigate('/'); // Kick them out
+        }
+    }, [hasAccess, navigate, addToast]);
+
+    if (!hasAccess) return null; // Render nothing while redirecting
+
     return <Grimoire />;
 };
 
@@ -62,7 +77,7 @@ function Dashboard() {
   const { theme, language } = useTheme();
   const { user, signOut } = useAuth();
   const isMagical = theme === 'magical';
-  const t = translations[language] || translations['en'];
+  const t = translations[language];
 
   const [searchParams] = useSearchParams();
   
@@ -136,7 +151,7 @@ function Dashboard() {
           
           <div className="fixed bottom-4 right-4 z-50">
             <button onClick={signOut} className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-1 rounded text-xs font-bold border border-red-500/20 transition-all flex items-center gap-2">
-              <LogOut size={12} /> {t.signOut}
+              <LogOut size={12} /> Sign Out
             </button>
           </div>
 
@@ -171,7 +186,7 @@ function Dashboard() {
             {activeSection === 'theory' && <div className="w-full max-w-4xl mx-auto animate-in fade-in zoom-in duration-300"><TheoryViewer onBack={() => setActiveSection(null)} /></div>}
             {activeSection === 'apps' && <AppsMenu onBack={() => setActiveSection(null)} />}
             {activeSection === 'community' && <CommunityHub onBack={() => setActiveSection(null)} />}
-            {activeSection === 'profile' && <div className="w-full animate-in fade-in zoom-in duration-300"><div className="max-w-2xl mx-auto mb-4"><button onClick={() => setActiveSection(null)} className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all border ${isMagical ? 'bg-slate-800 border-slate-700 text-amber-100 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><ChevronLeft size={18} /> {t.menu}</button></div><ProfileView /></div>}
+            {activeSection === 'profile' && <div className="w-full animate-in fade-in zoom-in duration-300"><div className="max-w-2xl mx-auto mb-4"><button onClick={() => setActiveSection(null)} className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all border ${isMagical ? 'bg-slate-800 border-slate-700 text-amber-100 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><ChevronLeft size={18} /> {language === 'ka' ? 'მენიუ' : 'Menu'}</button></div><ProfileView /></div>}
 
           </main>
         </>
@@ -186,18 +201,24 @@ export default function App() {
       <ThemeProvider>
         <ToastProvider>
           <GameProvider>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/community" element={<Dashboard />} />
-              
-              {/* --- RESTORED ORIGINAL ADMIN ROUTES --- */}
-              <Route path="/admin" element={<AdminLogin />} />
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              
-              <Route path="/grimoire" element={<GrimoireRoute />} />
-              
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            {/* SECURITY WRAPS ROUTES */}
+            <SecurityOverlay>
+              <Routes>
+                {/* PUBLIC ROUTES */}
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/community" element={<Dashboard />} />
+                
+                {/* ADMIN ROUTES */}
+                <Route path="/admin" element={<AdminLogin />} />
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                
+                {/* 🔥 PROTECTED GRIMOIRE ROUTE 🔥 */}
+                <Route path="/grimoire" element={<GrimoireRoute />} />
+                
+                {/* FALLBACK */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </SecurityOverlay>
           </GameProvider>
         </ToastProvider>
       </ThemeProvider>

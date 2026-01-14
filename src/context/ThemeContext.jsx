@@ -5,9 +5,7 @@ const ThemeContext = createContext();
 export function ThemeProvider({ children }) {
   // Load initial values from localStorage to prevent "White Screen" on refresh
   const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'standard');
-  
-  // CHANGED: Default language is now Georgian ('ka') if no preference is saved
-  const [language, setLanguage] = useState(() => localStorage.getItem('app-lang') || 'ka');
+  const [language, setLanguage] = useState(() => localStorage.getItem('app-lang') || 'en');
 
   // Persist changes to localStorage
   useEffect(() => {

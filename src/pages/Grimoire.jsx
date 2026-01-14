@@ -3,7 +3,6 @@ import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { useGameLogic } from '../context/GameContext'; 
 import { useToast } from '../context/ToastContext';
-import { useTheme } from '../context/ThemeContext'; // Added for translations
 import { 
   BookOpen, Trash2, RefreshCw, CheckCircle, RotateCcw, 
   Eye, Lock, XCircle, Check
@@ -11,9 +10,9 @@ import {
 
 export default function Grimoire({ onBack }) {
   const navigate = useNavigate();
+  // 🔥 Destructure tier to allow free access for Archmages if needed
   const { spendXp, xp, tier } = useGameLogic(); 
   const { addToast } = useToast();
-  const { language } = useTheme(); // Get current language
   
   const [mistakes, setMistakes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,61 +20,6 @@ export default function Grimoire({ onBack }) {
   // Review State
   const [activeReview, setActiveReview] = useState(null);
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
-
-  // --- TRANSLATIONS ---
-  const t = {
-    en: {
-        title: "Grimoire of Failures",
-        subtitle: "Knowledge is built upon the ruins of failure.",
-        empty: "Your soul is pure. No failures recorded.",
-        failed: "Failed",
-        times: "times",
-        time: "time",
-        review: "Review",
-        cleanse: "Cleanse Memory",
-        inspection: "Inspection",
-        yourAnswer: "Your Answer",
-        correctAnswer: "Correct Answer",
-        unknown: "Unknown",
-        hidden: "The correct path is hidden.",
-        reveal: "Reveal Answer",
-        close: "Close",
-        delete: "Cleanse (Delete)",
-        noPreview: "No preview available",
-        noExplanation: "No explanation recorded.",
-        mystery: "Mystery Question",
-        arcaneSight: "Arcane Sight (Free)",
-        knowledgeRevealed: "Knowledge Revealed",
-        notEnoughXP: "Not enough XP. Requires",
-        cleansed: "Mistake Cleansed"
-    },
-    ka: {
-        title: "შეცდომების გრიმუარი",
-        subtitle: "ცოდნა შენდება წარუმატებლობის ნანგრევებზე.",
-        empty: "თქვენი სული სუფთაა. შეცდომები არ მოიძებნა.",
-        failed: "ვერ უპასუხეთ",
-        times: "-ჯერ",
-        time: "-ჯერ",
-        review: "განხილვა",
-        cleanse: "მეხსიერების გაწმენდა",
-        inspection: "ინსპექცია",
-        yourAnswer: "თქვენი პასუხი",
-        correctAnswer: "სწორი პასუხი",
-        unknown: "უცნობია",
-        hidden: "სწორი გზა დაფარულია.",
-        reveal: "პასუხის ნახვა",
-        close: "დახურვა",
-        delete: "წაშლა",
-        noPreview: "წინასწარი ნახვა შეუძლებელია",
-        noExplanation: "ახსნა არ არის ჩაწერილი.",
-        mystery: "იდუმალი კითხვა",
-        arcaneSight: "არკანული ხედვა (უფასო)",
-        knowledgeRevealed: "ცოდნა გაცხადებულია",
-        notEnoughXP: "არასაკმარისი XP. საჭიროა",
-        cleansed: "შეცდომა წაშლილია"
-    }
-  };
-  const text = t[language] || t.en;
 
   useEffect(() => {
     fetchMistakes();
@@ -109,7 +53,7 @@ export default function Grimoire({ onBack }) {
     else navigate('/');
   };
 
-  // 🔥 Reveal Logic
+  // 🔥 FIXED: Reveal Logic
   const handleReveal = () => {
     if (isAnswerRevealed) return;
 
@@ -124,11 +68,11 @@ export default function Grimoire({ onBack }) {
             spendXp(COST); 
         }
 
-        // 3. Reveal immediately
+        // 3. Reveal immediately (don't wait for return value)
         setIsAnswerRevealed(true);
-        addToast(isFree ? text.arcaneSight : `${text.knowledgeRevealed} (-${COST} XP)`, "success");
+        addToast(isFree ? "Arcane Sight (Free)" : `Knowledge Revealed (-${COST} XP)`, "success");
     } else {
-        addToast(`${text.notEnoughXP} ${COST} XP.`, "error");
+        addToast(`Not enough XP. Requires ${COST} XP.`, "error");
     }
   };
 
@@ -147,9 +91,11 @@ export default function Grimoire({ onBack }) {
 
         <div className="text-center">
           <h1 className="text-3xl font-serif text-amber-500 mb-2 flex items-center justify-center gap-3">
-            <BookOpen size={32} /> {text.title}
+            <BookOpen size={32} /> Grimoire of Failures
           </h1>
-          <p className="text-slate-400">"{text.subtitle}"</p>
+          <p className="text-slate-400">
+            "Knowledge is built upon the ruins of failure."
+          </p>
         </div>
       </div>
 
@@ -160,7 +106,7 @@ export default function Grimoire({ onBack }) {
         ) : mistakes.length === 0 ? (
           <div className="text-center p-12 border-2 border-dashed border-slate-800 rounded-xl text-slate-500">
             <CheckCircle size={48} className="mx-auto mb-4 text-emerald-500/50" />
-            <p>{text.empty}</p>
+            <p>Your soul is pure. No failures recorded.</p>
           </div>
         ) : (
           mistakes.map(m => (
@@ -174,15 +120,15 @@ export default function Grimoire({ onBack }) {
                     {m.game_type}
                   </span>
                   <span className="text-[10px] text-slate-500">
-                    {text.failed} {m.mistake_count} {m.mistake_count > 1 ? text.times : text.time}
+                    Failed {m.mistake_count} time{m.mistake_count > 1 ? 's' : ''}
                   </span>
                 </div>
                 
                 <h3 className="font-bold text-slate-200">
-                  {m.question_snapshot?.title || `${text.mystery} #${m.question_id}`}
+                  {m.question_snapshot?.title || `Mystery Question #${m.question_id}`}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 line-clamp-1">
-                    {m.question_snapshot?.question || text.noPreview}
+                    {m.question_snapshot?.question || "No preview available"}
                 </p>
                 <div className="text-[10px] text-slate-600 mt-1">
                     {new Date(m.created_at).toLocaleDateString()}
@@ -194,12 +140,12 @@ export default function Grimoire({ onBack }) {
                   onClick={() => startReview(m)}
                   className="px-4 py-2 bg-amber-900/20 text-amber-500 border border-amber-900/50 rounded-lg hover:bg-amber-900/40 transition flex items-center gap-2 text-sm font-bold"
                 >
-                  <RefreshCw size={14} /> {text.review}
+                  <RefreshCw size={14} /> Review
                 </button>
                 <button 
                   onClick={() => handleCleanse(m.id)}
                   className="p-2 text-slate-600 hover:text-red-500 transition"
-                  title={text.cleanse}
+                  title="Cleanse Memory"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -215,7 +161,7 @@ export default function Grimoire({ onBack }) {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-amber-500 mb-4 flex items-center gap-2">
-                <BookOpen size={20} /> {text.inspection}
+                <BookOpen size={20} /> Inspection
             </h2>
             
             {/* QUESTION */}
@@ -229,10 +175,10 @@ export default function Grimoire({ onBack }) {
             {/* YOUR MISTAKE */}
             <div className="bg-red-900/10 p-4 rounded-xl mb-4 border border-red-900/30">
                 <div className="flex items-center gap-2 text-red-400 font-bold text-xs uppercase mb-1">
-                    <XCircle size={14} /> {text.yourAnswer}
+                    <XCircle size={14} /> Your Answer
                 </div>
                 <p className="text-red-200 text-sm font-medium">
-                    {activeReview.question_snapshot?.userAnswer || text.unknown}
+                    {activeReview.question_snapshot?.userAnswer || "Unknown"}
                 </p>
                 {activeReview.question_snapshot?.userFeedback && (
                     <p className="text-red-300/70 text-xs mt-2 italic">
@@ -247,24 +193,24 @@ export default function Grimoire({ onBack }) {
                 {!isAnswerRevealed ? (
                     <div className="text-center py-2">
                         <div className="flex justify-center mb-2 text-slate-500"><Lock size={24} /></div>
-                        <p className="text-slate-400 text-sm mb-3">{text.hidden}</p>
+                        <p className="text-slate-400 text-sm mb-3">The correct path is hidden.</p>
                         <button 
                             onClick={handleReveal}
                             className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 mx-auto transition-all ${xp >= 100 ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-lg' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
                         >
-                            <Eye size={16} /> {text.reveal} (100 XP)
+                            <Eye size={16} /> Reveal Answer (100 XP)
                         </button>
                     </div>
                 ) : (
                     <div className="animate-in fade-in slide-in-from-bottom-2">
                         <div className="flex items-center gap-2 text-green-400 font-bold text-xs uppercase mb-1">
-                            <Check size={14} /> {text.correctAnswer}
+                            <Check size={14} /> Correct Answer
                         </div>
                         <p className="text-green-200 text-sm font-medium">
                             {activeReview.question_snapshot?.correctAnswer || "Data lost in the void..."}
                         </p>
                         <p className="text-green-300/70 text-xs mt-2 italic border-l-2 border-green-500/30 pl-3">
-                            {activeReview.question_snapshot?.correctFeedback || text.noExplanation}
+                            {activeReview.question_snapshot?.correctFeedback || "No explanation recorded."}
                         </p>
                     </div>
                 )}
@@ -275,17 +221,17 @@ export default function Grimoire({ onBack }) {
                 onClick={() => setActiveReview(null)}
                 className="px-4 py-2 text-slate-400 hover:text-white"
               >
-                {text.close}
+                Close
               </button>
               <button 
                 onClick={() => {
                   handleCleanse(activeReview.id);
                   setActiveReview(null);
-                  addToast(text.cleansed, "success");
+                  addToast("Mistake Cleansed", "success");
                 }}
                 className="px-4 py-2 bg-slate-800 hover:bg-red-900/50 text-slate-300 hover:text-red-200 border border-slate-700 hover:border-red-800 rounded-lg font-bold text-sm flex items-center gap-2"
               >
-                <Trash2 size={14} /> {text.delete}
+                <Trash2 size={14} /> Cleanse (Delete)
               </button>
             </div>
           </div>

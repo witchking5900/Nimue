@@ -322,6 +322,6 @@ export const clinicalCases = [
                 }
             ]
         }
-    ],
+    ]
   }
 ];
