@@ -64,9 +64,6 @@ export function AuthProvider({ children }) {
   const validateSessionSecurity = async (userId, userEmail, fullUserObject) => {
       if (!deviceId) return;
 
-      // ============================================================
-      // CHECK 1: TRUSTED DEVICE LIMIT (Persistent "Guest List")
-      // ============================================================
       const { data: trustedDevices } = await supabase
           .from('trusted_devices')
           .select('device_id')
@@ -75,14 +72,13 @@ export function AuthProvider({ children }) {
       const isTrusted = trustedDevices?.some(d => d.device_id === deviceId);
       const deviceCount = trustedDevices?.length || 0;
 
-      // --- THE FIX: God Mode Check ---
+      // God Mode Check
       const maxDevices = (fullUserObject?.user_metadata?.tier === 'archmage') ? 999 : 2;
 
       if (!isTrusted) {
           if (deviceCount >= maxDevices) {
               await supabase.auth.signOut();
               
-              // Only alert Archmage if it's NOT the Archmage themselves getting blocked (avoid spamming yourself)
               if (maxDevices === 2) {
                   await supabase.rpc('send_petition', {
                       target_user_id: ARCHMAGE_ID,
@@ -95,7 +91,6 @@ export function AuthProvider({ children }) {
               alert("🚫 ACCESS DENIED 🚫\n\nYour account is linked to the maximum number of devices.\nThis device is not authorized.");
               return;
           } else {
-              // Register new device
               await supabase.from('trusted_devices').insert({
                   user_id: userId,
                   device_id: deviceId,
@@ -104,9 +99,6 @@ export function AuthProvider({ children }) {
           }
       }
 
-      // ============================================================
-      // CHECK 2: PARALLEL SESSION LIMIT
-      // ============================================================
       const { data: activeSessions } = await supabase
           .from('active_sessions')
           .select('*')
@@ -117,13 +109,10 @@ export function AuthProvider({ children }) {
           (new Date() - new Date(s.last_seen) < 5 * 60 * 1000) 
       );
 
-      // Archmages can have parallel sessions (God Mode)
       const isArchmage = fullUserObject?.user_metadata?.tier === 'archmage';
 
       if (otherActiveSessions?.length > 0 && !isArchmage) {
           console.warn("⚠️ Parallel session detected.");
-
-          // 1. REPORT TO ARCHMAGE (Using Secure RPC)
           await supabase.rpc('send_petition', {
               target_user_id: ARCHMAGE_ID,
               topic: `Security: Parallel Login`,
@@ -131,7 +120,6 @@ export function AuthProvider({ children }) {
               sender: userEmail
           });
 
-          // 2. NUKE SESSIONS
           await supabase.from('active_sessions').delete().eq('user_id', userId);
           await supabase.auth.signOut();
           
@@ -139,11 +127,7 @@ export function AuthProvider({ children }) {
           return;
       }
 
-      // ============================================================
-      // CHECK 3: REGISTER HEARTBEAT
-      // ============================================================
       const mySession = activeSessions?.find(s => s.device_id === deviceId);
-      
       if (!mySession) {
           await supabase.from('active_sessions').insert({
               user_id: userId,
@@ -156,8 +140,27 @@ export function AuthProvider({ children }) {
   };
 
   // --- 4. AUTH ACTIONS ---
+  
+  // LOGIN
   const signIn = async (email, password) => {
     return await supabase.auth.signInWithPassword({ email, password });
+  };
+
+  // REGISTER (ეს ფუნქცია აკლდა!)
+  const signUp = async (email, password, username, fullName) => {
+    return await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          username: username,
+          full_name: fullName, // გვინდა რომ სახელი შეინახოს მეტამონაცემებში
+          tier: 'apprentice',  // სტანდარტული ტიერი
+          hearts: 5,
+          xp: 0
+        }
+      }
+    });
   };
 
   const signOut = async () => {
@@ -168,8 +171,9 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  // signUp დავამატეთ აქ 
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut, loading }}>
+    <AuthContext.Provider value={{ user, signIn, signUp, signOut, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   );
