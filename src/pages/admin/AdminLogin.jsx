@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../supabaseClient'; // Ensure path is correct
+import { supabase } from '../../supabaseClient'; // Ensure path is correct
 import { useNavigate } from 'react-router-dom';
 import { Shield, Lock, Loader2 } from 'lucide-react'; // Changed RefreshCw to Loader2 for better spinner
 
