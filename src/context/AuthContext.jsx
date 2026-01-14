@@ -8,7 +8,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [deviceId, setDeviceId] = useState(null);
 
-  // YOUR ARCHMAGE ID (For alerts)
+  // YOUR ARCHMAGE ID
   const ARCHMAGE_ID = '9177228f-6e97-4ebe-9dcc-f8ee4cce8026';
 
   // --- 1. DEVICE FINGERPRINTING ---
@@ -26,7 +26,6 @@ export function AuthProvider({ children }) {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-          // 2.1 CHECK IF BANNED
           const { data: profile } = await supabase
             .from('profiles')
             .select('banned, ban_reason')
@@ -77,20 +76,30 @@ export function AuthProvider({ children }) {
 
       if (!isTrusted) {
           if (deviceCount >= maxDevices) {
-              await supabase.auth.signOut();
               
+              // ▼▼▼ THE FIX: SEND ALERT FIRST, THEN KICK ▼▼▼
+              
+              // Only alert if it's NOT the Archmage (to avoid spamming yourself)
               if (maxDevices === 2) {
-                  await supabase.rpc('send_petition', {
-                      target_user_id: ARCHMAGE_ID,
-                      topic: `Security: 3rd Device Attempt`,
-                      content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
-                      sender: userEmail
-                  });
+                  try {
+                    await supabase.rpc('send_petition', {
+                        target_user_id: ARCHMAGE_ID,
+                        topic: `Security: 3rd Device Attempt`,
+                        content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
+                        sender: userEmail
+                    });
+                  } catch (err) {
+                    console.error("Failed to send security alert:", err);
+                  }
               }
 
+              // NOW we kick them out
+              await supabase.auth.signOut();
+              
               alert("🚫 ACCESS DENIED 🚫\n\nYour account is linked to the maximum number of devices.\nThis device is not authorized.");
               return;
           } else {
+              // Register new device
               await supabase.from('trusted_devices').insert({
                   user_id: userId,
                   device_id: deviceId,
@@ -99,6 +108,7 @@ export function AuthProvider({ children }) {
           }
       }
 
+      // Check for Parallel Sessions
       const { data: activeSessions } = await supabase
           .from('active_sessions')
           .select('*')
@@ -113,6 +123,8 @@ export function AuthProvider({ children }) {
 
       if (otherActiveSessions?.length > 0 && !isArchmage) {
           console.warn("⚠️ Parallel session detected.");
+          
+          // Alert First
           await supabase.rpc('send_petition', {
               target_user_id: ARCHMAGE_ID,
               topic: `Security: Parallel Login`,
@@ -120,6 +132,7 @@ export function AuthProvider({ children }) {
               sender: userEmail
           });
 
+          // Then Nuke & Kick
           await supabase.from('active_sessions').delete().eq('user_id', userId);
           await supabase.auth.signOut();
           
@@ -127,6 +140,7 @@ export function AuthProvider({ children }) {
           return;
       }
 
+      // Heartbeat
       const mySession = activeSessions?.find(s => s.device_id === deviceId);
       if (!mySession) {
           await supabase.from('active_sessions').insert({
@@ -141,12 +155,10 @@ export function AuthProvider({ children }) {
 
   // --- 4. AUTH ACTIONS ---
   
-  // LOGIN
   const signIn = async (email, password) => {
     return await supabase.auth.signInWithPassword({ email, password });
   };
 
-  // REGISTER (ეს ფუნქცია აკლდა!)
   const signUp = async (email, password, username, fullName) => {
     return await supabase.auth.signUp({
       email,
@@ -154,8 +166,8 @@ export function AuthProvider({ children }) {
       options: {
         data: {
           username: username,
-          full_name: fullName, // გვინდა რომ სახელი შეინახოს მეტამონაცემებში
-          tier: 'apprentice',  // სტანდარტული ტიერი
+          full_name: fullName, 
+          tier: 'apprentice', 
           hearts: 5,
           xp: 0
         }
@@ -171,7 +183,6 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  // signUp დავამატეთ აქ 
   return (
     <AuthContext.Provider value={{ user, signIn, signUp, signOut, loading }}>
       {!loading && children}
