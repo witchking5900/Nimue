@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { supabase } from '../../supabaseClient.js'; // Ensure path is correct
+import { supabase } from '../supabaseClient'; // Ensure path is correct
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, AlertCircle } from 'lucide-react';
+import { Shield, Lock, Loader2 } from 'lucide-react'; // Changed RefreshCw to Loader2 for better spinner
 
 // !!! REPLACE THIS WITH YOUR EXACT EMAIL !!!
 const ADMIN_EMAIL = "witchking5900@gmail.com"; 
@@ -16,8 +16,12 @@ export default function AdminLogin() {
     e.preventDefault();
     setLoading(true);
 
+    // --- THE FIX: Clean the input (Remove spaces & lowercase) ---
+    const cleanInputEmail = email.trim().toLowerCase();
+    const cleanAdminEmail = ADMIN_EMAIL.trim().toLowerCase();
+
     // 1. Hardcoded Security Check (Frontend level)
-    if (email !== ADMIN_EMAIL) {
+    if (cleanInputEmail !== cleanAdminEmail) {
         alert("Access Denied: You are not the Archmage.");
         setLoading(false);
         return;
@@ -25,7 +29,7 @@ export default function AdminLogin() {
 
     // 2. Supabase Auth
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: cleanInputEmail, // Use the cleaned email
       password,
     });
 
@@ -78,7 +82,7 @@ export default function AdminLogin() {
             disabled={loading}
             className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 mt-4"
           >
-            {loading ? <RefreshCw className="animate-spin" /> : <Lock size={18} />}
+            {loading ? <Loader2 className="animate-spin" size={18} /> : <Lock size={18} />}
             {loading ? "Verifying..." : "Unlock Grimoire"}
           </button>
         </form>
