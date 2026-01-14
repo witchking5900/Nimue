@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   const [deviceId, setDeviceId] = useState(null);
 
   // YOUR ARCHMAGE ID
-  const ARCHMAGE_ID = '9177228f-6e97-4ebe-9dcc-f8ee4cce8026';
+  const ARCHMAGE_ID = '69a13b7d-53c3-40e0-8ad2-8b93440e7aad';
 
   // --- 1. DEVICE FINGERPRINTING ---
   useEffect(() => {
