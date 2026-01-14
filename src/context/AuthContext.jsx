@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
             setUser(null);
           } else {
             setUser(session.user);
-            validateSessionSecurity(session.user.id, session.user.email);
+            validateSessionSecurity(session.user.id, session.user.email, session.user);
           }
       }
       setLoading(false);
@@ -50,7 +50,7 @@ export function AuthProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
           setUser(session.user);
-          validateSessionSecurity(session.user.id, session.user.email);
+          validateSessionSecurity(session.user.id, session.user.email, session.user);
       } else {
           setUser(null);
       }
@@ -61,7 +61,7 @@ export function AuthProvider({ children }) {
   }, [deviceId]);
 
   // --- 3. THE BUREAUCRAT (SECURITY LOGIC) ---
-  const validateSessionSecurity = async (userId, userEmail) => {
+  const validateSessionSecurity = async (userId, userEmail, fullUserObject) => {
       if (!deviceId) return;
 
       // ============================================================
@@ -75,19 +75,24 @@ export function AuthProvider({ children }) {
       const isTrusted = trustedDevices?.some(d => d.device_id === deviceId);
       const deviceCount = trustedDevices?.length || 0;
 
+      // --- THE FIX: God Mode Check ---
+      const maxDevices = (fullUserObject?.user_metadata?.tier === 'archmage') ? 999 : 2;
+
       if (!isTrusted) {
-          if (deviceCount >= 2) {
+          if (deviceCount >= maxDevices) {
               await supabase.auth.signOut();
               
-              // SEND ALERT TO ARCHMAGE
-              await supabase.rpc('send_petition', {
-                  target_user_id: ARCHMAGE_ID,
-                  topic: `Security: 3rd Device Attempt`,
-                  content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
-                  sender: userEmail
-              });
+              // Only alert Archmage if it's NOT the Archmage themselves getting blocked (avoid spamming yourself)
+              if (maxDevices === 2) {
+                  await supabase.rpc('send_petition', {
+                      target_user_id: ARCHMAGE_ID,
+                      topic: `Security: 3rd Device Attempt`,
+                      content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
+                      sender: userEmail
+                  });
+              }
 
-              alert("🚫 ACCESS DENIED 🚫\n\nYour account is linked to the maximum number of devices (2).\nThis device is not authorized.");
+              alert("🚫 ACCESS DENIED 🚫\n\nYour account is linked to the maximum number of devices.\nThis device is not authorized.");
               return;
           } else {
               // Register new device
@@ -112,7 +117,10 @@ export function AuthProvider({ children }) {
           (new Date() - new Date(s.last_seen) < 5 * 60 * 1000) 
       );
 
-      if (otherActiveSessions?.length > 0) {
+      // Archmages can have parallel sessions (God Mode)
+      const isArchmage = fullUserObject?.user_metadata?.tier === 'archmage';
+
+      if (otherActiveSessions?.length > 0 && !isArchmage) {
           console.warn("⚠️ Parallel session detected.");
 
           // 1. REPORT TO ARCHMAGE (Using Secure RPC)
