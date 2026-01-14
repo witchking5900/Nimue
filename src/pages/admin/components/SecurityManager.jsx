@@ -24,7 +24,7 @@ export default function SecurityManager() {
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
-      .in('type', ['admin_request', 'security'])
+      .in('type', ['admin_request', 'security', 'security_alert'])
       .order('created_at', { ascending: false });
 
     if (!error) setRequests(data || []);
