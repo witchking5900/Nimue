@@ -15,12 +15,12 @@ export default function TheoryViewer({ onBack }) {
   const isMagical = theme === 'magical';
 
   // --- STATE ---
-  const [categories, setCategories] = useState([]); // Now stores full Objects, not just strings
+  const [categories, setCategories] = useState([]); 
   const [allInscriptions, setAllInscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Navigation State
-  const [selectedCategory, setSelectedCategory] = useState(null); // Stores the LINKING KEY (Standard Name)
+  const [selectedCategory, setSelectedCategory] = useState(null); 
   const [selectedTopic, setSelectedTopic] = useState(null);       
 
   // Subscription State
@@ -37,18 +37,14 @@ export default function TheoryViewer({ onBack }) {
 
   const [showMasteryModal, setShowMasteryModal] = useState(false);
 
-  // --- HELPER: GET DISPLAY NAME BASED ON THEME ---
+  // --- HELPER 1: GET CATEGORY DISPLAY NAME ---
   const getCategoryDisplay = (catObj) => {
     if (!catObj) return { title: '', subtitle: '' };
 
-    // 1. Determine Language Key (en or ka)
     const langKey = language === 'ka' ? 'ka' : 'en';
-    
-    // 2. Safety Check: Does title exist?
-    const titleObj = catObj.title?.[langKey] || catObj.title?.['en']; // Fallback to EN
+    const titleObj = catObj.title?.[langKey] || catObj.title?.['en']; 
     if (!titleObj) return { title: catObj.slug || 'Unknown', subtitle: '' };
 
-    // 3. Magic vs Standard Logic
     if (isMagical) {
         return {
             title: titleObj.magical || titleObj.standard || catObj.slug,
@@ -62,7 +58,29 @@ export default function TheoryViewer({ onBack }) {
     }
   };
 
-  // --- XP HELPER ---
+  // --- HELPER 2: SAFE TEXT EXTRACTOR ---
+  const getContent = (contentObj) => {
+    if (!contentObj) return "";
+    
+    // 1. Get Language Layer
+    const langKey = language === 'ka' ? 'ka' : 'en';
+    const langData = contentObj[langKey] || contentObj['en'];
+    
+    if (!langData) return "";
+
+    // 2. Check if it's a string (Old Data or Quiz Options)
+    if (typeof langData === 'string') return langData;
+
+    // 3. Handle Standard vs Magical Object (New Inscription Data)
+    if (isMagical) {
+        return langData.magical || langData.standard || "";
+    } else {
+        return langData.standard || "";
+    }
+  };
+
+  const getText = (obj) => getContent(obj); 
+
   const awardXp = (amount) => {
     if (amount === 0) return;
     if (gainXp) gainXp(amount);
@@ -73,37 +91,35 @@ export default function TheoryViewer({ onBack }) {
     const fetchData = async () => {
       setLoading(true);
       
-      // 1. Fetch REAL Categories (Keep whole object!)
-      const { data: catData } = await supabase
-        .from('categories')
-        .select('*')
-        .order('slug');
-      
-      if (catData) {
-         setCategories(catData);
-      }
+      const { data: catData } = await supabase.from('categories').select('*').order('slug');
+      if (catData) setCategories(catData);
 
-      // 2. Fetch Inscriptions
-      const { data: dbData } = await supabase
-        .from('theory_posts') 
-        .select(`*`); 
+      const { data: dbData, error } = await supabase
+        .from('inscriptions') 
+        .select(`
+            *,
+            categories ( title, slug )
+        `); 
+
+      if (error) console.error("Error fetching inscriptions:", error);
 
       if (dbData) {
-        const formattedData = dbData.map(item => ({
-            id: item.id, 
-            category: item.category || 'General', 
-            title: item.title,
-            content: item.content,
-            quiz: item.test_data || []
-        }));
+        const formattedData = dbData.map(item => {
+            const catName = item.categories?.title?.en?.standard || item.categories?.slug || 'General';
+            return {
+                id: item.id, 
+                category: catName, 
+                title: item.title,
+                content: item.content,
+                quiz: item.test_data || []
+            };
+        });
         setAllInscriptions(formattedData);
         
-        // --- DEEP LINK LOGIC ---
         const pendingId = localStorage.getItem('pending_inscription_id');
         if (pendingId) {
             const foundTopic = formattedData.find(t => t.id === pendingId);
             if (foundTopic) {
-                // We must find the standard name to set selectedCategory correctly
                 setSelectedCategory(foundTopic.category);
                 setSelectedTopic(foundTopic);
             }
@@ -111,7 +127,6 @@ export default function TheoryViewer({ onBack }) {
         }
       }
 
-      // 3. Fetch User Subscriptions
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: subData } = await supabase
@@ -128,66 +143,41 @@ export default function TheoryViewer({ onBack }) {
     fetchData();
   }, []);
 
-  // Filter inscriptions for the selected category
   const currentCategoryInscriptions = useMemo(() => {
       if (!selectedCategory) return [];
       return allInscriptions.filter(i => i.category === selectedCategory);
   }, [selectedCategory, allInscriptions]);
 
-  // --- ACTIONS ---
-  
   const toggleSubscription = async (e, categoryKey) => {
       e.stopPropagation(); 
-      // Validation
       if (!categoryKey) return;
-
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-          addToast("Please sign in to subscribe.");
-          return;
-      }
+      if (!user) { addToast("Please sign in to subscribe."); return; }
 
       try {
           if (subscribedCategories.includes(categoryKey)) {
-              // UNSUBSCRIBE
-              const { error } = await supabase
-                  .from('subscriptions')
-                  .delete()
-                  .match({ user_id: user.id, category: categoryKey });
-              
+              const { error } = await supabase.from('subscriptions').delete().match({ user_id: user.id, category: categoryKey });
               if (error) throw error;
               setSubscribedCategories(prev => prev.filter(c => c !== categoryKey));
               addToast(isMagical ? "Link severed." : "Unsubscribed.");
           } else {
-              // SUBSCRIBE
-              const { error } = await supabase
-                  .from('subscriptions')
-                  .insert({ user_id: user.id, category: categoryKey });
-              
+              const { error } = await supabase.from('subscriptions').insert({ user_id: user.id, category: categoryKey });
               if (error) throw error;
               setSubscribedCategories(prev => [...prev, categoryKey]);
               addToast(isMagical ? "Fate bound." : "Subscribed!");
           }
-      } catch (err) {
-          addToast("Error: " + err.message);
-      }
+      } catch (err) { addToast("Error: " + err.message); }
   };
 
-  const getText = (obj) => {
-    if (!obj) return "";
-    if (typeof obj === 'string') return obj;
-    const langObj = obj[language] || obj['en'];
-    if (!langObj) return "";
-    return langObj; 
-  };
-
-  // --- QUIZ LOGIC ---
+  // --- QUIZ LOGIC (FIXED XP GRANTING) ---
   const finishQuiz = async () => {
     const masteryId = `${selectedTopic.id}_mastered`;
     const scorePercent = Math.round((quizState.score / selectedTopic.quiz.length) * 100);
+    
+    // Only grant XP if 100% score AND hasn't been mastered before
     if (scorePercent === 100 && !completedIds.has(masteryId)) {
-        awardXp(10); 
-        await completeActivity(masteryId, 0); 
+        // FIX: Pass the XP amount directly to completeActivity so DB records it
+        await completeActivity(masteryId, 10); 
         setShowMasteryModal(true); 
     }
     setQuizState(prev => ({ ...prev, showResults: true }));
@@ -212,7 +202,7 @@ export default function TheoryViewer({ onBack }) {
 
   if (loading) return <div className="p-12 text-center opacity-50"><Loader2 className="animate-spin inline" /></div>;
 
-  // VIEW 1: CATEGORY LIST (From Database)
+  // VIEW 1: CATEGORY LIST
   if (!selectedCategory) {
       return (
         <div className="w-full animate-in fade-in">
@@ -225,17 +215,13 @@ export default function TheoryViewer({ onBack }) {
                  </h1>
             </div>
 
-            {/* CATEGORY GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {categories.length === 0 ? (
                     <div className="col-span-2 text-center opacity-50 p-8">No archives found.</div>
                 ) : (
                     categories.map(cat => {
-                        // Logic to get the linking key (Standard Name) used in DB relationships
                         const standardKey = cat.title?.en?.standard || cat.slug;
                         const isSubscribed = subscribedCategories.includes(standardKey);
-                        
-                        // Logic to get the Visual Name (Magical/Standard)
                         const { title, subtitle } = getCategoryDisplay(cat);
 
                         return (
@@ -256,7 +242,6 @@ export default function TheoryViewer({ onBack }) {
                                         <div className={`font-bold text-lg ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>
                                             {title}
                                         </div>
-                                        {/* RENDER SUBTITLE IF EXISTS */}
                                         {subtitle && (
                                             <div className={`text-xs italic ${isMagical ? 'text-amber-500/70' : 'text-slate-400'}`}>
                                                 {subtitle}
@@ -265,7 +250,6 @@ export default function TheoryViewer({ onBack }) {
                                     </div>
                                 </div>
 
-                                {/* SUBSCRIBE BUTTON */}
                                 <button
                                     onClick={(e) => toggleSubscription(e, standardKey)}
                                     className={`p-3 rounded-full transition-all relative z-10 ${
@@ -286,11 +270,10 @@ export default function TheoryViewer({ onBack }) {
       );
   }
 
-  // VIEW 2: INSCRIPTIONS LIST (Specific Category)
+  // VIEW 2: INSCRIPTIONS LIST
   if (selectedCategory && !selectedTopic) {
-      // We need to find the category OBJECT again to display the nice magical title in the header
       const currentCatObj = categories.find(c => (c.title?.en?.standard === selectedCategory) || (c.slug === selectedCategory));
-      const { title } = getCategoryDisplay(currentCatObj); // Re-use our helper
+      const { title } = getCategoryDisplay(currentCatObj);
 
       return (
         <div className="w-full animate-in slide-in-from-right">
@@ -300,7 +283,7 @@ export default function TheoryViewer({ onBack }) {
                         <ChevronLeft size={20} />
                     </button>
                     <h2 className={`text-2xl font-bold ${isMagical ? 'text-amber-100 font-serif' : 'text-slate-900'}`}>
-                        {title || selectedCategory} {/* Display Magical Title here! */}
+                        {title || selectedCategory}
                     </h2>
                 </div>
             </div>
@@ -326,14 +309,14 @@ export default function TheoryViewer({ onBack }) {
                                 className={`p-6 rounded-xl text-left border-2 transition-all hover:scale-[1.02] flex flex-col gap-2 relative ${isMagical ? 'bg-slate-900 border-amber-900/50 hover:border-amber-500' : 'bg-white border-slate-200 hover:border-blue-400 shadow-sm'}`}
                             >
                                 <div className="w-full flex justify-between items-start">
-                                    <h3 className={`font-bold text-lg ${isMagical ? 'text-amber-100' : 'text-slate-800'}`}>{getText(topic.title)}</h3>
+                                    <h3 className={`font-bold text-lg ${isMagical ? 'text-amber-100' : 'text-slate-800'}`}>{getContent(topic.title)}</h3>
                                     <div className="flex gap-1">
                                         {isMastered && <Crown size={16} className="text-yellow-500 fill-yellow-500" />}
                                         {isRead && <CheckCircle size={16} className="text-emerald-500 fill-emerald-100" />}
                                     </div>
                                 </div>
                                 <p className={`text-sm line-clamp-3 w-full opacity-80 ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>
-                                    {getText(topic.content).replace(/<[^>]+>/g, '')}
+                                    {getContent(topic.content).replace(/<[^>]+>/g, '')}
                                 </p>
                             </button>
                         );
@@ -344,13 +327,15 @@ export default function TheoryViewer({ onBack }) {
       );
   }
 
-  // VIEW 3: READING & QUIZ (Standard logic)
+  // VIEW 3: READING & QUIZ
   if (quizState.active && !quizState.showResults) {
     const question = selectedTopic.quiz[quizState.currentQuestionIndex];
     return (
       <div className={`p-6 rounded-2xl border-2 ${isMagical ? 'bg-slate-900 border-purple-500' : 'bg-white border-blue-500'}`}>
         <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl">Quiz: {quizState.currentQuestionIndex + 1} / {selectedTopic.quiz.length}</h3><Brain className={isMagical ? "text-purple-400" : "text-blue-500"} /></div>
-        <p className="text-lg mb-6 font-medium">{question.question}</p>
+        
+        <p className="text-lg mb-6 font-medium">{getContent(question.question)}</p>
+        
         <div className="space-y-3">
           {question.options.map((opt) => {
             const isSelected = quizState.selectedAnswer === opt.id;
@@ -364,18 +349,37 @@ export default function TheoryViewer({ onBack }) {
 
             return (
                 <button key={opt.id} onClick={() => handleAnswer(opt.id, question.correctId)} disabled={!!quizState.selectedAnswer} className={`w-full p-4 rounded-xl border-2 text-left transition-all ${btnClass}`}>
-                    {opt.text}
+                    {getContent(opt.text)}
                 </button>
             );
           })}
         </div>
+        
         {quizState.selectedAnswer && (
-          <div className="mt-6 flex justify-end"><button onClick={nextQuestion} className={`px-6 py-2 rounded-lg font-bold text-white ${isMagical ? 'bg-purple-600' : 'bg-blue-600'}`}>{quizState.currentQuestionIndex + 1 === selectedTopic.quiz.length ? "Finish" : "Next"} <ArrowRight size={18} className="inline ml-1" /></button></div>
+           <div className="mt-6 animate-in fade-in slide-in-from-bottom-2">
+               {(() => {
+                   const selectedOpt = question.options.find(o => o.id === quizState.selectedAnswer);
+                   const isCorrect = selectedOpt.id === question.correctId;
+                   return (
+                       <div className={`p-4 rounded-lg border-l-4 ${isCorrect ? 'bg-green-500/10 border-green-500 text-green-600' : 'bg-red-500/10 border-red-500 text-red-600'}`}>
+                           <p className="font-bold mb-1">{isCorrect ? (language === 'ka' ? "სწორია!" : "Correct!") : (language === 'ka' ? "შეცდომა!" : "Incorrect!")}</p>
+                           <p className="text-sm opacity-90">{getContent(selectedOpt.feedback)}</p>
+                       </div>
+                   );
+               })()}
+               
+               <div className="flex justify-end mt-4">
+                   <button onClick={nextQuestion} className={`px-6 py-2 rounded-lg font-bold text-white ${isMagical ? 'bg-purple-600' : 'bg-blue-600'}`}>
+                       {quizState.currentQuestionIndex + 1 === selectedTopic.quiz.length ? "Finish" : "Next"} <ArrowRight size={18} className="inline ml-1" />
+                   </button>
+               </div>
+          </div>
         )}
       </div>
     );
   }
 
+  // VIEW 4: RESULTS (Mastery)
   if (quizState.showResults) {
     const percentage = Math.round((quizState.score / selectedTopic.quiz.length) * 100);
     const isPerfect = percentage === 100;
@@ -408,7 +412,7 @@ export default function TheoryViewer({ onBack }) {
     );
   }
 
-  // VIEW 4: READING CONTENT
+  // VIEW 5: READING CONTENT
   const isRead = completedIds.has(`${selectedTopic.id}_read`);
   const isMastered = completedIds.has(`${selectedTopic.id}_mastered`);
   
@@ -421,14 +425,14 @@ export default function TheoryViewer({ onBack }) {
     <div className={`p-6 md:p-10 rounded-3xl border relative flex flex-col min-h-[60vh] ${isMagical ? 'bg-slate-900/80 border-amber-900/30' : 'bg-white border-slate-200 shadow-xl'}`}>
       <div className="mb-8 pb-4 border-b border-opacity-10 border-slate-500">
         <button onClick={() => setSelectedTopic(null)} className="mb-4 text-xs opacity-50 hover:opacity-100 flex items-center gap-1 uppercase tracking-widest font-bold"><ChevronLeft size={14} /> {language === 'ka' ? "უკან" : "Back"}</button>
-        <h2 className={`text-4xl font-bold ${isMagical ? 'text-amber-100 font-serif' : 'text-slate-900'}`}>{getText(selectedTopic.title)}</h2>
+        <h2 className={`text-4xl font-bold ${isMagical ? 'text-amber-100 font-serif' : 'text-slate-900'}`}>{getContent(selectedTopic.title)}</h2>
         <div className={`mt-2 text-sm font-bold uppercase tracking-wider ${isMagical ? 'text-amber-600' : 'text-blue-500'}`}>{selectedTopic.category}</div>
       </div>
       
       {/* HTML Content Render */}
       <div 
         className={`prose max-w-none leading-relaxed whitespace-pre-wrap flex-grow mb-12 ${isMagical ? 'prose-invert text-slate-300' : 'text-slate-700'}`}
-        dangerouslySetInnerHTML={{ __html: getText(selectedTopic.content) }}
+        dangerouslySetInnerHTML={{ __html: getContent(selectedTopic.content) }}
       />
 
       <div className={`mt-auto pt-8 border-t border-opacity-10 border-slate-500 flex flex-col md:flex-row gap-4`}>
@@ -437,7 +441,10 @@ export default function TheoryViewer({ onBack }) {
         </button>
         {selectedTopic.quiz && selectedTopic.quiz.length > 0 && (
             <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} disabled={isMastered} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isMastered ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50 border border-slate-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200') : (isMagical ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/20')}`}>
-                {isMastered ? <Crown size={20} /> : <Brain size={20} />} {isMastered ? (language === 'ka' ? "ჩაბარებულია" : "Passed") : (language === 'ka' ? "ქვიზის დაწყება" : "Take Quiz")}
+                {isMastered 
+                    ? <><Crown size={20} /> {(language === 'ka' ? "ჩაბარებულია" : "Passed")}</>
+                    : <><Brain size={20} /> {isMagical ? (language === 'ka' ? "არქიმაგის გამოცდა (+10 XP)" : "Face Archmage's Challenge (+10 XP)") : (language === 'ka' ? "ქვიზის დაწყება (+10 XP)" : "Take Quiz (+10 XP)")}</>
+                }
             </button>
         )}
       </div>
