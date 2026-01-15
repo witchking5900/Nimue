@@ -10,25 +10,21 @@ import {
 
 export default function TheoryViewer({ onBack }) {
   const { theme, language } = useTheme();
-  // Using gainXp from GameLogic (which now handles Archmage bypass internally if needed)
   const { completeActivity, completedIds, gainXp } = useGameLogic(); 
   const { addToast } = useToast();
   const isMagical = theme === 'magical';
 
   // --- STATE ---
-  const [categories, setCategories] = useState([]); 
+  const [categories, setCategories] = useState([]); // Now stores full Objects, not just strings
   const [allInscriptions, setAllInscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Navigation State
-  const [selectedCategory, setSelectedCategory] = useState(null); 
+  const [selectedCategory, setSelectedCategory] = useState(null); // Stores the LINKING KEY (Standard Name)
   const [selectedTopic, setSelectedTopic] = useState(null);       
 
   // Subscription State
   const [subscribedCategories, setSubscribedCategories] = useState([]);
-
-  // Search State
-  const [search, setSearch] = useState("");
 
   // Quiz State
   const [quizState, setQuizState] = useState({
@@ -41,6 +37,31 @@ export default function TheoryViewer({ onBack }) {
 
   const [showMasteryModal, setShowMasteryModal] = useState(false);
 
+  // --- HELPER: GET DISPLAY NAME BASED ON THEME ---
+  const getCategoryDisplay = (catObj) => {
+    if (!catObj) return { title: '', subtitle: '' };
+
+    // 1. Determine Language Key (en or ka)
+    const langKey = language === 'ka' ? 'ka' : 'en';
+    
+    // 2. Safety Check: Does title exist?
+    const titleObj = catObj.title?.[langKey] || catObj.title?.['en']; // Fallback to EN
+    if (!titleObj) return { title: catObj.slug || 'Unknown', subtitle: '' };
+
+    // 3. Magic vs Standard Logic
+    if (isMagical) {
+        return {
+            title: titleObj.magical || titleObj.standard || catObj.slug,
+            subtitle: titleObj.magicalSubtitle || ''
+        };
+    } else {
+        return {
+            title: titleObj.standard || catObj.slug,
+            subtitle: ''
+        };
+    }
+  };
+
   // --- XP HELPER ---
   const awardXp = (amount) => {
     if (amount === 0) return;
@@ -52,44 +73,37 @@ export default function TheoryViewer({ onBack }) {
     const fetchData = async () => {
       setLoading(true);
       
-      // 1. Fetch REAL Categories from DB
+      // 1. Fetch REAL Categories (Keep whole object!)
       const { data: catData } = await supabase
         .from('categories')
-        .select('*');
+        .select('*')
+        .order('slug');
       
       if (catData) {
-          // Extract simple string names for categories
-          const formattedCats = catData.map(c => 
-              c.title?.en?.standard || c.title?.standard || c.slug || 'General'
-          );
-          // Remove duplicates and sort
-          setCategories([...new Set(formattedCats)].sort());
+         setCategories(catData);
       }
 
       // 2. Fetch Inscriptions
       const { data: dbData } = await supabase
-        .from('theory_posts') // Ensure this matches your table name (was 'inscriptions' or 'theory_posts'?)
-        // Assuming table name is 'theory_posts' based on previous context. If it's 'inscriptions', change back.
-        // Wait, InscriptionManager uses 'theory_posts'. Let's stick to 'theory_posts'.
+        .from('theory_posts') 
         .select(`*`); 
 
       if (dbData) {
-        // Map DB data to Frontend structure
-        // Note: The structure depends on your DB columns. Assuming 'theory_posts' has category column.
         const formattedData = dbData.map(item => ({
             id: item.id, 
             category: item.category || 'General', 
             title: item.title,
             content: item.content,
-            quiz: item.test_data || [] // Assuming test_data column exists for quizzes
+            quiz: item.test_data || []
         }));
         setAllInscriptions(formattedData);
         
-        // --- DEEP LINK LOGIC (MOVED HERE TO ENSURE DATA EXISTS) ---
+        // --- DEEP LINK LOGIC ---
         const pendingId = localStorage.getItem('pending_inscription_id');
         if (pendingId) {
             const foundTopic = formattedData.find(t => t.id === pendingId);
             if (foundTopic) {
+                // We must find the standard name to set selectedCategory correctly
                 setSelectedCategory(foundTopic.category);
                 setSelectedTopic(foundTopic);
             }
@@ -122,18 +136,11 @@ export default function TheoryViewer({ onBack }) {
 
   // --- ACTIONS ---
   
-  // THE FIXED SUBSCRIPTION LOGIC
-  const toggleSubscription = async (e, categoryName) => {
+  const toggleSubscription = async (e, categoryKey) => {
       e.stopPropagation(); 
-      console.log(`🔔 Subscribe clicked for: "${categoryName}"`);
+      // Validation
+      if (!categoryKey) return;
 
-      // 1. Validation
-      if (!categoryName) {
-        console.error("❌ Error: Category Name is missing!");
-        return;
-      }
-
-      // 2. Auth Check
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
           addToast("Please sign in to subscribe.");
@@ -141,32 +148,27 @@ export default function TheoryViewer({ onBack }) {
       }
 
       try {
-          if (subscribedCategories.includes(categoryName)) {
+          if (subscribedCategories.includes(categoryKey)) {
               // UNSUBSCRIBE
               const { error } = await supabase
                   .from('subscriptions')
                   .delete()
-                  .match({ user_id: user.id, category: categoryName });
+                  .match({ user_id: user.id, category: categoryKey });
               
               if (error) throw error;
-
-              setSubscribedCategories(prev => prev.filter(c => c !== categoryName));
+              setSubscribedCategories(prev => prev.filter(c => c !== categoryKey));
               addToast(isMagical ? "Link severed." : "Unsubscribed.");
-              console.log("✅ Unsubscribed successfully.");
           } else {
               // SUBSCRIBE
               const { error } = await supabase
                   .from('subscriptions')
-                  .insert({ user_id: user.id, category: categoryName });
+                  .insert({ user_id: user.id, category: categoryKey });
               
               if (error) throw error;
-
-              setSubscribedCategories(prev => [...prev, categoryName]);
+              setSubscribedCategories(prev => [...prev, categoryKey]);
               addToast(isMagical ? "Fate bound." : "Subscribed!");
-              console.log("✅ Subscribed successfully.");
           }
       } catch (err) {
-          console.error("❌ Subscription Error:", err.message);
           addToast("Error: " + err.message);
       }
   };
@@ -176,7 +178,7 @@ export default function TheoryViewer({ onBack }) {
     if (typeof obj === 'string') return obj;
     const langObj = obj[language] || obj['en'];
     if (!langObj) return "";
-    return langObj; // Assuming simple string storage now based on InscriptionManager
+    return langObj; 
   };
 
   // --- QUIZ LOGIC ---
@@ -229,11 +231,17 @@ export default function TheoryViewer({ onBack }) {
                     <div className="col-span-2 text-center opacity-50 p-8">No archives found.</div>
                 ) : (
                     categories.map(cat => {
-                        const isSubscribed = subscribedCategories.includes(cat);
+                        // Logic to get the linking key (Standard Name) used in DB relationships
+                        const standardKey = cat.title?.en?.standard || cat.slug;
+                        const isSubscribed = subscribedCategories.includes(standardKey);
+                        
+                        // Logic to get the Visual Name (Magical/Standard)
+                        const { title, subtitle } = getCategoryDisplay(cat);
+
                         return (
                             <div 
-                                key={cat}
-                                onClick={() => setSelectedCategory(cat)}
+                                key={cat.id}
+                                onClick={() => setSelectedCategory(standardKey)}
                                 className={`p-6 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] group ${
                                     isMagical 
                                     ? 'bg-slate-900 border-slate-700 hover:border-amber-500/50' 
@@ -244,14 +252,22 @@ export default function TheoryViewer({ onBack }) {
                                     <div className={`p-3 rounded-full ${isMagical ? 'bg-amber-900/20 text-amber-500' : 'bg-blue-100 text-blue-600'}`}>
                                         {isMagical ? <Scroll size={24} /> : <FolderOpen size={24} />}
                                     </div>
-                                    <span className={`font-bold text-lg ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>
-                                        {cat}
-                                    </span>
+                                    <div>
+                                        <div className={`font-bold text-lg ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>
+                                            {title}
+                                        </div>
+                                        {/* RENDER SUBTITLE IF EXISTS */}
+                                        {subtitle && (
+                                            <div className={`text-xs italic ${isMagical ? 'text-amber-500/70' : 'text-slate-400'}`}>
+                                                {subtitle}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* SUBSCRIBE BUTTON */}
                                 <button
-                                    onClick={(e) => toggleSubscription(e, cat)}
+                                    onClick={(e) => toggleSubscription(e, standardKey)}
                                     className={`p-3 rounded-full transition-all relative z-10 ${
                                         isSubscribed 
                                         ? (isMagical ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/50' : 'bg-blue-500 text-white shadow-lg')
@@ -272,6 +288,10 @@ export default function TheoryViewer({ onBack }) {
 
   // VIEW 2: INSCRIPTIONS LIST (Specific Category)
   if (selectedCategory && !selectedTopic) {
+      // We need to find the category OBJECT again to display the nice magical title in the header
+      const currentCatObj = categories.find(c => (c.title?.en?.standard === selectedCategory) || (c.slug === selectedCategory));
+      const { title } = getCategoryDisplay(currentCatObj); // Re-use our helper
+
       return (
         <div className="w-full animate-in slide-in-from-right">
             <div className="flex items-center justify-between mb-6">
@@ -280,7 +300,7 @@ export default function TheoryViewer({ onBack }) {
                         <ChevronLeft size={20} />
                     </button>
                     <h2 className={`text-2xl font-bold ${isMagical ? 'text-amber-100 font-serif' : 'text-slate-900'}`}>
-                        {selectedCategory}
+                        {title || selectedCategory} {/* Display Magical Title here! */}
                     </h2>
                 </div>
             </div>
@@ -312,7 +332,6 @@ export default function TheoryViewer({ onBack }) {
                                         {isRead && <CheckCircle size={16} className="text-emerald-500 fill-emerald-100" />}
                                     </div>
                                 </div>
-                                {/* Strip HTML tags for preview using regex (simple/fast) */}
                                 <p className={`text-sm line-clamp-3 w-full opacity-80 ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {getText(topic.content).replace(/<[^>]+>/g, '')}
                                 </p>
