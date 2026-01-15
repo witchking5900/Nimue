@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Zap, Skull, MessageCircle, BookOpen } from 'lucide-react'; // Added icons
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -33,11 +33,8 @@ export default function NotificationBell() {
 
   useEffect(() => {
     let channel;
-    
-    // A. Initial Load
     fetchLatest();
 
-    // B. Realtime Listener
     channel = supabase
       .channel('notification_bell')
       .on(
@@ -58,25 +55,16 @@ export default function NotificationBell() {
     };
   }, []);
 
-  // --- ACTIONS (DEBUG VERSION) ---
-  
+  // --- ACTIONS ---
   const markAsRead = async (id, e) => {
     if (e) e.stopPropagation();
-
-    // 1. Optimistic Update (Update UI first)
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
-
-    // 2. Database Update
-    const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', id);
     
-    // 3. DEBUG ALERT: If this pops up, it is 100% a Database Permission issue
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
     if (error) {
-        alert(`⚠️ DATABASE ERROR:\n${error.message}\n\nHint: ${error.hint || 'Check RLS Policies'}`);
-        fetchLatest(); // Revert UI
+        alert(`⚠️ DATABASE ERROR:\n${error.message}`);
+        fetchLatest(); 
     }
   };
 
@@ -88,21 +76,12 @@ export default function NotificationBell() {
 
   const clearAll = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    
-    // 1. Optimistic Update
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
-
-    // 2. Database Update
-    const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id);
-
-    // 3. DEBUG ALERT
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
     if (error) {
         alert(`⚠️ DATABASE ERROR:\n${error.message}`);
-        fetchLatest(); // Revert UI
+        fetchLatest(); 
     }
   };
 
@@ -114,6 +93,32 @@ export default function NotificationBell() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // --- HELPER: GET STYLES BASED ON TYPE ---
+  const getNotificationConfig = (type) => {
+      // 🟢 GOOD (Green)
+      if (['xp', 'reply', 'favorite_update', 'amnesty', 'bounty'].includes(type)) {
+          return {
+              bg: isMagical ? 'bg-emerald-900/20 border-emerald-500/50' : 'bg-green-50 border-green-200',
+              text: isMagical ? 'text-emerald-300' : 'text-green-700',
+              icon: type === 'xp' ? <Zap size={14}/> : <CheckCheck size={14}/>
+          };
+      }
+      // 🔴 BAD (Red)
+      if (['ban', 'strike', 'report', 'warning'].includes(type)) {
+          return {
+              bg: isMagical ? 'bg-red-900/20 border-red-500/50' : 'bg-red-50 border-red-200',
+              text: isMagical ? 'text-red-300' : 'text-red-700',
+              icon: <Skull size={14}/>
+          };
+      }
+      // 🔵 NEUTRAL (Default)
+      return {
+          bg: isMagical ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-100',
+          text: isMagical ? 'text-slate-300' : 'text-slate-700',
+          icon: <MessageCircle size={14}/>
+      };
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -143,19 +148,25 @@ export default function NotificationBell() {
             {notifications.length === 0 ? (
               <div className={`p-8 text-center text-sm italic ${isMagical ? 'text-slate-500' : 'text-slate-400'}`}>No new whispers...</div>
             ) : (
-              notifications.map(n => (
-                <div 
-                  key={n.id} 
-                  onClick={() => handleNotificationClick(n)}
-                  className={`p-4 border-b cursor-pointer transition-colors relative text-left ${isMagical ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50'} ${!n.is_read ? (isMagical ? 'bg-amber-900/20' : 'bg-blue-50') : ''}`}
-                >
-                  {!n.is_read && <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-red-500" />}
-                  <div className={`text-[10px] font-bold uppercase mb-1 ${n.type === 'bounty' ? 'text-green-500' : n.type === 'report' ? 'text-red-500' : isMagical ? 'text-amber-500' : 'text-blue-500'}`}>{n.type}</div>
-                  <div className={`text-sm font-bold mb-1 leading-tight ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>{n.title}</div>
-                  <div className={`text-xs leading-snug ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>{n.message}</div>
-                  <div className="text-[10px] opacity-30 mt-2 text-right">{new Date(n.created_at).toLocaleDateString()}</div>
-                </div>
-              ))
+              notifications.map(n => {
+                const style = getNotificationConfig(n.type);
+                return (
+                    <div 
+                      key={n.id} 
+                      onClick={() => handleNotificationClick(n)}
+                      className={`p-4 border-b cursor-pointer transition-all relative text-left border-l-4 ${style.bg} ${isMagical ? 'hover:bg-white/5' : 'hover:bg-slate-50'} ${!n.is_read ? 'font-semibold' : 'opacity-80'}`}
+                    >
+                      {!n.is_read && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />}
+                      
+                      <div className={`text-[10px] font-bold uppercase mb-1 flex items-center gap-1 ${style.text}`}>
+                        {style.icon} {n.type.replace('_', ' ')}
+                      </div>
+                      <div className={`text-sm mb-1 leading-tight ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>{n.title}</div>
+                      <div className={`text-xs leading-snug ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>{n.message}</div>
+                      <div className="text-[10px] opacity-30 mt-2 text-right">{new Date(n.created_at).toLocaleDateString()}</div>
+                    </div>
+                );
+              })
             )}
           </div>
         </div>

@@ -3,15 +3,38 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
-  // Load initial values from localStorage to prevent "White Screen" on refresh
-  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'standard');
-  const [language, setLanguage] = useState(() => localStorage.getItem('app-lang') || 'en');
+  // 1. THEME STATE WITH IMPROVED MEMORY
+  // We check LocalStorage (Permanent) first, then SessionStorage (Temporary), then default.
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const persistent = localStorage.getItem('nimue-theme-pref'); // Matches WelcomeModal
+      const session = sessionStorage.getItem('nimue-theme-session');
+      // If nothing is found, default to 'magical' (or 'standard' if you prefer)
+      return persistent || session || 'magical';
+    }
+    return 'magical';
+  });
 
-  // Persist changes to localStorage
+  // 2. LANGUAGE STATE
+  const [language, setLanguage] = useState(() => {
+    return localStorage.getItem('app-lang') || 'en';
+  });
+
+  // 3. THEME EFFECT (Syncs with CSS & Session)
   useEffect(() => {
-    localStorage.setItem('app-theme', theme);
+    // Save to Session Storage automatically (Keeps theme while tab is open)
+    sessionStorage.setItem('nimue-theme-session', theme);
+
+    // Apply CSS classes to the HTML tag (Important for styling)
+    const root = window.document.documentElement;
+    root.classList.remove('standard', 'magical');
+    root.classList.add(theme);
+    
+    // We do NOT force save to localStorage here. 
+    // That is handled by the WelcomeModal only if the user asked to "Remember".
   }, [theme]);
 
+  // 4. LANGUAGE EFFECT (Always Persist)
   useEffect(() => {
     localStorage.setItem('app-lang', language);
   }, [language]);
@@ -37,6 +60,6 @@ export function ThemeProvider({ children }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext);
-  if (!context) return {}; // Return empty object instead of crashing if context is missing
+  if (!context) return {}; 
   return context;
 }

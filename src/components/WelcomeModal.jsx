@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { Sparkles, Activity, Globe } from 'lucide-react'; // Added Globe
+import { Sparkles, Activity, Globe } from 'lucide-react';
 
 export default function WelcomeModal() {
   const { setTheme, language, setLanguage } = useTheme(); 
@@ -27,19 +27,36 @@ export default function WelcomeModal() {
   const t = content[language];
 
   useEffect(() => {
+    // 1. Check Permanent Storage (Remember Me)
     const savedTheme = localStorage.getItem('nimue-theme-pref');
-    if (!savedTheme) {
-      setIsOpen(true); 
+    
+    // 2. Check Session Storage (Just for right now)
+    const sessionTheme = sessionStorage.getItem('nimue-theme-session');
+
+    if (savedTheme) {
+      setTheme(savedTheme);
+      setIsOpen(false);
+    } else if (sessionTheme) {
+      // If they chose a theme this session (even without 'remember me'), use it
+      setTheme(sessionTheme);
+      setIsOpen(false);
     } else {
-      setTheme(savedTheme); 
+      // Only open if BOTH are empty
+      setIsOpen(true); 
     }
   }, [setTheme]);
 
   const handleChoice = (choice) => {
     setTheme(choice);
+    
+    // Always save to Session Storage (So it doesn't ask again until they close the tab)
+    sessionStorage.setItem('nimue-theme-session', choice);
+
+    // Only save to Local Storage if they checked the box
     if (remember) {
       localStorage.setItem('nimue-theme-pref', choice);
     }
+    
     setIsOpen(false);
   };
 
@@ -51,10 +68,8 @@ export default function WelcomeModal() {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
-      {/* Added 'relative' here so the absolute button knows where to sit */}
       <div className="bg-white dark:bg-slate-900 rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-700 animate-in zoom-in duration-300 relative">
         
-        {/* --- LANGUAGE BUTTON (New!) --- */}
         <button 
           onClick={toggleLanguage}
           className="absolute top-4 right-4 z-50 p-2 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors flex items-center gap-2 text-xs font-bold shadow-lg border border-slate-600"
@@ -63,15 +78,12 @@ export default function WelcomeModal() {
           <span>{language === 'en' ? 'EN' : 'GE'}</span>
         </button>
 
-        {/* Header */}
         <div className="p-8 text-center bg-slate-900 text-white border-b border-slate-700">
           <h2 className="text-3xl font-bold mb-2">{t.title}</h2>
           <p className="text-slate-400">{t.desc}</p>
         </div>
 
-        {/* Choice Buttons */}
         <div className="flex flex-col md:flex-row h-64">
-          
           <button 
             onClick={() => handleChoice('standard')}
             className="flex-1 p-6 hover:bg-slate-50 transition-colors flex flex-col items-center justify-center gap-4 group border-b md:border-b-0 md:border-r border-slate-200"

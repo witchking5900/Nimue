@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../supabaseClient'; 
 
@@ -15,12 +15,18 @@ export function GameProvider({ children }) {
   const [regenTarget, setRegenTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
+  
+  // NEW: Tracks if sub is active/expired for the UI Banner
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+
+  // Ref to hold the downgrade timer so we can clear it if needed
+  const downgradeTimerRef = useRef(null);
 
   // --- TIER HELPERS ---
   const isInfinite = ['archmage', 'insubstantial'].includes(tier); // Infinite Hearts
   const isArchmage = tier === 'archmage'; // Admin Powers
   
-  // NEW: Permanent Access for High Tiers (No Renting Needed)
+  // Permanent Access for High Tiers (No Renting Needed)
   const hasPermanentAccess = ['archmage', 'insubstantial', 'grand_magus', 'magus'].includes(tier);
 
   const getMaxHearts = (currentTier) => {
@@ -35,7 +41,15 @@ export function GameProvider({ children }) {
       return 3600000;                                   // 60m
   };
 
-  // --- 1. INITIAL LOAD ---
+  // --- HELPER: PERFORM DB DOWNGRADE ---
+  const performDowngrade = async (subId) => {
+      await supabase.from('profiles').update({ tier: 'apprentice' }).eq('id', user.id);
+      if (subId) {
+          await supabase.from('subscriptions').update({ status: 'expired' }).eq('id', subId);
+      }
+  };
+
+  // --- 1. INITIAL LOAD & LIVE ENFORCER ---
   useEffect(() => {
     const fetchProfileData = async () => {
       if (!user) {
@@ -53,14 +67,60 @@ export function GameProvider({ children }) {
       if (profileData) setProfile(profileData);
 
       const meta = user.user_metadata || {};
-      const finalTier = profileData?.tier || meta.tier || 'apprentice';
+      
+      // Determine Initial Tier
+      let finalTier = profileData?.tier || meta.tier || 'apprentice';
+
+      // ▼▼▼ THE ENFORCER (LIVE EDITION) ▼▼▼
+      if (finalTier === 'magus' || finalTier === 'grand_magus') {
+          const { data: sub } = await supabase
+              .from('subscriptions')
+              .select('id, current_period_end, status')
+              .eq('user_id', user.id)
+              .in('status', ['active', 'cancelled']) 
+              .order('current_period_end', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+          if (sub && sub.current_period_end) {
+              const now = new Date().getTime();
+              const expiryDate = new Date(sub.current_period_end).getTime();
+              const timeRemaining = expiryDate - now;
+
+              // CASE 1: TIME ALREADY UP
+              if (timeRemaining <= 0) {
+                  console.log("⏳ Subscription Already Expired. Downgrading...");
+                  await performDowngrade(sub.id);
+                  finalTier = 'apprentice';
+                  setSubscriptionStatus('expired'); // Banner shows immediately
+                  // Alert removed in favor of banner
+              } 
+              // CASE 2: TIME REMAINING -> SET TIME BOMB
+              else {
+                  console.log(`⏳ Subscription valid. Auto-downgrade set in ${Math.floor(timeRemaining/1000)} seconds.`);
+                  setSubscriptionStatus('active'); // Status is good
+
+                  // Clear any existing timer just in case
+                  if (downgradeTimerRef.current) clearTimeout(downgradeTimerRef.current);
+
+                  // Set new timer
+                  downgradeTimerRef.current = setTimeout(async () => {
+                      console.log("⏰ TIME IS UP! Performing live downgrade...");
+                      await performDowngrade(sub.id);
+                      setTier('apprentice'); 
+                      setSubscriptionStatus('expired'); // <--- TRIGGER BANNER LIVE
+                  }, timeRemaining);
+              }
+          }
+      }
+      // ▲▲▲ END ENFORCER ▲▲▲
       
       let finalXp = finalTier === 'archmage' ? 999999 : (profileData?.xp ?? (Number(meta.xp) || 0));
       let currentHearts = profileData?.hearts ?? (meta.hearts !== undefined ? Number(meta.hearts) : getMaxHearts(finalTier));
       let targetTime = profileData?.regen_target || meta.regen_target || null;
       const maxHearts = getMaxHearts(finalTier);
 
-      // Offline Regen
+      // Offline Regen Logic
       const duration = getRegenDuration(finalTier);
       if (currentHearts < maxHearts) {
           if (targetTime) {
@@ -109,6 +169,11 @@ export function GameProvider({ children }) {
     };
 
     fetchProfileData();
+
+    // Cleanup timer on unmount or user change
+    return () => {
+        if (downgradeTimerRef.current) clearTimeout(downgradeTimerRef.current);
+    };
   }, [user]);
 
   // --- 2. REALTIME ---
@@ -136,9 +201,6 @@ export function GameProvider({ children }) {
         const { error } = await supabase.from('profiles').update(updates).eq('id', user.id);
         if (error) {
             console.error("❌ CRITICAL SAVE ERROR:", error.message);
-            // alert("Database Error: " + error.message);
-        } else {
-            // console.log("✅ Data Saved:", updates);
         }
     } catch (err) {
         console.error("Save Execution Failed:", err);
@@ -220,15 +282,21 @@ export function GameProvider({ children }) {
   }, [user]);
 
   const value = {
-    profile, hearts, maxHearts: getMaxHearts(tier), isInfiniteHearts: isInfinite, regenTarget, regenSpeed: getRegenDuration(tier), xp, tier, completedIds,
+    profile, 
+    hearts, 
+    maxHearts: getMaxHearts(tier), 
+    isInfiniteHearts: isInfinite, 
+    regenTarget, 
+    regenSpeed: getRegenDuration(tier), 
+    xp, 
+    tier, 
+    completedIds,
+    subscriptionStatus, // <--- EXPOSED HERE
     takeDamage, gainXp, spendXp, completeActivity,
     
-    // --- UPDATED ACCESS LOGIC ---
+    // --- ACCESS LOGIC ---
     hasAccess: (appId) => {
-        // High tiers bypass checks
         if (hasPermanentAccess) return true;
-        
-        // Standard check for Apprentices
         const expiry = tempUnlocks[appId];
         if (!expiry) return false;
         return new Date(expiry).getTime() > Date.now();
@@ -239,11 +307,9 @@ export function GameProvider({ children }) {
     level: Math.floor(xp / 100) + 1, 
     username: user?.email ? user.email.split('@')[0] : "Student",
     
-    // --- UPDATED RENT LOGIC ---
+    // --- RENT LOGIC ---
     rentApp: (appId, cost) => {
-        // High tiers bypass payment
         if (hasPermanentAccess) return true;
-
         if (xp >= cost) {
             const newXp = xp - cost;
             const expiryDate = new Date();
@@ -267,5 +333,4 @@ export function GameProvider({ children }) {
   return <GameContext.Provider value={value}>{!loading && children}</GameContext.Provider>;
 }
 
-// ✅ THIS EXPORT WAS MISSING - NOW FIXED
 export const useGameLogic = () => useContext(GameContext);

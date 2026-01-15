@@ -1,22 +1,27 @@
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useGameLogic } from '../hooks/useGameLogic'; 
-// ADDED: Import the Notification Bell
 import NotificationBell from './NotificationBell'; 
+import { useNavigate } from 'react-router-dom'; // ✅ ADDED: Navigation
 import { 
   User, Wand2, Stethoscope, Sparkles, Heart, Shield,
-  Infinity as InfinityIcon
+  Infinity as InfinityIcon, Crown // Crown is used for the button
 } from 'lucide-react';
 
 export default function Navbar({ onOpenProfile }) {
   const { user } = useAuth();
   const { theme, toggleTheme, language, setLanguage } = useTheme();
   const { hearts, username, tier, isInfiniteHearts, maxHearts } = useGameLogic(); 
+  const navigate = useNavigate(); // ✅ ADDED: Hook
   
   const isMagical = theme === 'magical';
 
   // --- GET PROFILE PICTURE ---
   const avatarUrl = user?.user_metadata?.avatar_url;
+
+  // --- CHECK IF USER IS ALREADY PRO ---
+  // We hide the button if they are Magus, Grand Magus, Archmage, or Insubstantial
+  const isPro = ['magus', 'grand_magus', 'insubstantial', 'archmage'].includes(tier);
 
   // --- HIERARCHY OF SOULS CONFIG (Standard vs Magical) ---
   const getRankConfig = () => {
@@ -128,6 +133,22 @@ export default function Navbar({ onOpenProfile }) {
 
         {/* RIGHT: CONTROLS */}
         <div className="flex items-center gap-3 relative z-10">
+          
+          {/* 🔥 NEW UPGRADE BUTTON (Hidden if already Pro) 🔥 */}
+          {!isPro && (
+             <button 
+                onClick={() => navigate('/pricing')}
+                className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full font-bold text-xs transition-all transform hover:scale-105 ${
+                    isMagical 
+                    ? 'bg-gradient-to-r from-amber-700 to-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:shadow-[0_0_20px_rgba(245,158,11,0.6)]' 
+                    : 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md'
+                }`}
+             >
+                <Crown size={14} />
+                {isMagical ? (language === 'ka' ? 'აღზევება' : 'Ascend') : (language === 'ka' ? 'განახლება' : 'Upgrade')}
+             </button>
+          )}
+
           <button onClick={() => setLanguage(language === 'en' ? 'ka' : 'en')} className={`font-bold text-xs px-2 py-1 rounded border transition-all ${isMagical ? 'border-amber-500/30 text-amber-500 hover:bg-amber-900/20' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}>
             {language.toUpperCase()}
           </button>
@@ -136,7 +157,7 @@ export default function Navbar({ onOpenProfile }) {
             {isMagical ? <Stethoscope size={20} /> : <Wand2 size={20} />}
           </button>
 
-          {/* ADDED: NOTIFICATION BELL */}
+          {/* NOTIFICATION BELL (Preserved) */}
           <NotificationBell />
           
           {/* PROFILE BUTTON */}

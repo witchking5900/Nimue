@@ -26,6 +26,7 @@ export function AuthProvider({ children }) {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
+          // Check Ban Status
           const { data: profile } = await supabase
             .from('profiles')
             .select('banned, ban_reason')
@@ -38,7 +39,8 @@ export function AuthProvider({ children }) {
             setUser(null);
           } else {
             setUser(session.user);
-            validateSessionSecurity(session.user.id, session.user.email, session.user);
+            // We pass the ID and Email, but we won't rely on the session object for Tier anymore
+            validateSessionSecurity(session.user.id, session.user.email);
           }
       }
       setLoading(false);
@@ -49,7 +51,7 @@ export function AuthProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
           setUser(session.user);
-          validateSessionSecurity(session.user.id, session.user.email, session.user);
+          validateSessionSecurity(session.user.id, session.user.email);
       } else {
           setUser(null);
       }
@@ -59,47 +61,61 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, [deviceId]);
 
-  // --- 3. THE BUREAUCRAT (SECURITY LOGIC) ---
-  const validateSessionSecurity = async (userId, userEmail, fullUserObject) => {
+  // --- 3. THE BUREAUCRAT (FIXED SECURITY LOGIC) ---
+  const validateSessionSecurity = async (userId, userEmail) => {
       if (!deviceId) return;
 
-      const { data: trustedDevices } = await supabase
-          .from('trusted_devices')
-          .select('device_id')
-          .eq('user_id', userId);
+      // 1. GET THE TRUTH FROM THE DB (Rank & Devices)
+      // We fetch the PROFILE directly to ensure we know if they are Archmage
+      const [devicesResult, profileResult] = await Promise.all([
+          supabase.from('trusted_devices').select('device_id').eq('user_id', userId),
+          supabase.from('profiles').select('tier').eq('id', userId).single()
+      ]);
 
-      const isTrusted = trustedDevices?.some(d => d.device_id === deviceId);
-      const deviceCount = trustedDevices?.length || 0;
+      const trustedDevices = devicesResult.data || [];
+      const realTier = profileResult.data?.tier || 'apprentice'; // The Database Truth
 
-      // God Mode Check
-      const maxDevices = (fullUserObject?.user_metadata?.tier === 'archmage') ? 999 : 2;
+      // 2. GOD MODE CHECK (Immediate Bypass)
+      if (realTier === 'archmage') {
+          // If Archmage, we skip the limit check entirely.
+          // We just ensure this device is registered for convenience.
+          const isTrusted = trustedDevices.some(d => d.device_id === deviceId);
+          if (!isTrusted) {
+              await supabase.from('trusted_devices').insert({
+                  user_id: userId,
+                  device_id: deviceId,
+                  device_name: navigator.userAgent
+              });
+          }
+          return; // ARCHMAGE PASSES HERE
+      }
+
+      // 3. MORTAL CHECK (For everyone else)
+      const isTrusted = trustedDevices.some(d => d.device_id === deviceId);
+      const deviceCount = trustedDevices.length;
+      const maxDevices = 2; // Hard limit for mortals
 
       if (!isTrusted) {
           if (deviceCount >= maxDevices) {
               
-              // ▼▼▼ THE FIX: SEND ALERT FIRST, THEN KICK ▼▼▼
-              
-              // Only alert if it's NOT the Archmage (to avoid spamming yourself)
-              if (maxDevices === 2) {
-                  try {
-                    await supabase.rpc('send_petition', {
-                        target_user_id: ARCHMAGE_ID,
-                        topic: `Security: 3rd Device Attempt`,
-                        content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
-                        sender: userEmail
-                    });
-                  } catch (err) {
-                    console.error("Failed to send security alert:", err);
-                  }
+              // Alert the Admin (Archmage)
+              try {
+                await supabase.rpc('send_petition', {
+                    target_user_id: ARCHMAGE_ID,
+                    topic: `Security: 3rd Device Attempt`,
+                    content: `User ${userEmail} tried to login from a 3rd device (Blocked).`,
+                    sender: userEmail
+                });
+              } catch (err) {
+                console.error("Failed to send security alert:", err);
               }
 
-              // NOW we kick them out
+              // Kick the User
               await supabase.auth.signOut();
-              
               alert("🚫 ACCESS DENIED 🚫\n\nYour account is linked to the maximum number of devices.\nThis device is not authorized.");
               return;
           } else {
-              // Register new device
+              // Register new device if under limit
               await supabase.from('trusted_devices').insert({
                   user_id: userId,
                   device_id: deviceId,
@@ -108,7 +124,7 @@ export function AuthProvider({ children }) {
           }
       }
 
-      // Check for Parallel Sessions
+      // 4. PARALLEL SESSION CHECK
       const { data: activeSessions } = await supabase
           .from('active_sessions')
           .select('*')
@@ -119,12 +135,9 @@ export function AuthProvider({ children }) {
           (new Date() - new Date(s.last_seen) < 5 * 60 * 1000) 
       );
 
-      const isArchmage = fullUserObject?.user_metadata?.tier === 'archmage';
-
-      if (otherActiveSessions?.length > 0 && !isArchmage) {
+      if (otherActiveSessions?.length > 0 && realTier !== 'archmage') {
           console.warn("⚠️ Parallel session detected.");
           
-          // Alert First
           await supabase.rpc('send_petition', {
               target_user_id: ARCHMAGE_ID,
               topic: `Security: Parallel Login`,
@@ -132,7 +145,6 @@ export function AuthProvider({ children }) {
               sender: userEmail
           });
 
-          // Then Nuke & Kick
           await supabase.from('active_sessions').delete().eq('user_id', userId);
           await supabase.auth.signOut();
           

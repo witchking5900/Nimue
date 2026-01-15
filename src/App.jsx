@@ -17,11 +17,16 @@ import AppsMenu from './components/AppsMenu';
 import AuthModal from './components/AuthModal'; 
 import ProfileView from './components/ProfileView'; 
 import CommunityHub from './pages/CommunityHub'; 
-import Grimoire from './pages/Grimoire'; // ✅ IMPORT GRIMOIRE
+import Grimoire from './pages/Grimoire'; 
 import { Book, GraduationCap, LogOut, ChevronLeft, Users, Crown } from 'lucide-react'; 
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
+
+// ▼▼▼ NEW IMPORTS (Pricing & Security & Banner) ▼▼▼
+import PricingPage from './pages/PricingPage';
+import SecurityManager from './pages/admin/components/SecurityManager';
+import ExpirationBanner from './components/ExpirationBanner'; // <--- ADDED THIS
 
 const translations = {
   en: {
@@ -50,25 +55,29 @@ const translations = {
   }
 };
 
+// --- HELPER: Fixes Profile Navigation from Pricing Page ---
+const PricingNavbarWrapper = () => {
+    const navigate = useNavigate();
+    return <Navbar onOpenProfile={() => navigate('/?section=profile')} />;
+};
+
 // --- PROTECTED GRIMOIRE WRAPPER ---
-// This component checks rank before showing the page
 const GrimoireRoute = () => {
     const { tier } = useGameLogic();
     const { addToast } = useToast();
     const navigate = useNavigate();
     
-    // Allowed Ranks
     const allowedTiers = ['magus', 'grand_magus', 'insubstantial', 'archmage'];
     const hasAccess = allowedTiers.includes(tier);
 
     useEffect(() => {
         if (!hasAccess) {
             addToast("Only Magus rank and above can enter the Grimoire.", "error");
-            navigate('/'); // Kick them out
+            navigate('/'); 
         }
     }, [hasAccess, navigate, addToast]);
 
-    if (!hasAccess) return null; // Render nothing while redirecting
+    if (!hasAccess) return null;
 
     return <Grimoire />;
 };
@@ -82,6 +91,9 @@ function Dashboard() {
   const [searchParams] = useSearchParams();
   
   const getInitialSection = () => {
+      // ▼▼▼ FIXED: Check for 'profile' in URL ▼▼▼
+      if (searchParams.get('section') === 'profile') return 'profile';
+      
       if (searchParams.get('inscription')) return 'theory';
       if (searchParams.get('community')) return 'community';
       if (searchParams.get('trial')) return 'apps';
@@ -93,6 +105,7 @@ function Dashboard() {
   const [activeSection, setActiveSection] = useState(getInitialSection());
 
   useEffect(() => {
+    const sectionParam = searchParams.get('section');
     const inscriptionId = searchParams.get('inscription');
     const communityId = searchParams.get('community');
     const trialId = searchParams.get('trial');
@@ -101,7 +114,12 @@ function Dashboard() {
     
     let detected = false;
 
-    if (inscriptionId) {
+    // ▼▼▼ FIXED: Handle Profile Navigation ▼▼▼
+    if (sectionParam === 'profile') {
+      setActiveSection('profile');
+      detected = true;
+    }
+    else if (inscriptionId) {
       localStorage.setItem('pending_inscription_id', inscriptionId); 
       setActiveSection('theory');
       detected = true;
@@ -157,6 +175,10 @@ function Dashboard() {
 
           <main className="container mx-auto p-4 md:p-8 flex-1 flex flex-col">
             
+            {/* ▼▼▼ EXPIRATION BANNER ADDED HERE ▼▼▼ */}
+            <ExpirationBanner />
+            {/* ▲▲▲ IT SITS AT THE TOP OF CONTENT ▲▲▲ */}
+
             {!activeSection && (
               <div className="flex-1 flex flex-col items-center justify-center -mt-20 animate-in fade-in">
                 <h1 className={`text-5xl mb-6 text-center ${isMagical ? 'font-serif text-amber-500' : 'font-sans text-blue-600 font-bold'}`}>
@@ -208,11 +230,22 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/community" element={<Dashboard />} />
                 
+                {/* ▼▼▼ FIXED: PRICING WITH WRAPPER ▼▼▼ */}
+                <Route path="/pricing" element={
+                    <>
+                        <PricingNavbarWrapper /> 
+                        <PricingPage />
+                    </>
+                } />
+
                 {/* ADMIN ROUTES */}
                 <Route path="/admin" element={<AdminLogin />} />
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 
-                {/* 🔥 PROTECTED GRIMOIRE ROUTE 🔥 */}
+                {/* ▼▼▼ ADDED: SECURITY MANAGER ROUTE ▼▼▼ */}
+                <Route path="/admin/security" element={<SecurityManager />} />
+                
+                {/* PROTECTED GRIMOIRE ROUTE */}
                 <Route path="/grimoire" element={<GrimoireRoute />} />
                 
                 {/* FALLBACK */}
