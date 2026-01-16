@@ -26,7 +26,12 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 // ▼▼▼ NEW IMPORTS (Pricing & Security & Banner) ▼▼▼
 import PricingPage from './pages/PricingPage';
 import SecurityManager from './pages/admin/components/SecurityManager';
-import ExpirationBanner from './components/ExpirationBanner'; // <--- ADDED THIS
+import ExpirationBanner from './components/ExpirationBanner';
+
+// ▼▼▼ COMPLIANCE IMPORTS (BOG Requirements) ▼▼▼
+import About from './pages/About';
+import Legal from './pages/Legal';
+import Footer from './components/Footer';
 
 const translations = {
   en: {
@@ -175,9 +180,8 @@ function Dashboard() {
 
           <main className="container mx-auto p-4 md:p-8 flex-1 flex flex-col">
             
-            {/* ▼▼▼ EXPIRATION BANNER ADDED HERE ▼▼▼ */}
+            {/* ▼▼▼ EXPIRATION BANNER ▼▼▼ */}
             <ExpirationBanner />
-            {/* ▲▲▲ IT SITS AT THE TOP OF CONTENT ▲▲▲ */}
 
             {!activeSection && (
               <div className="flex-1 flex flex-col items-center justify-center -mt-20 animate-in fade-in">
@@ -211,6 +215,9 @@ function Dashboard() {
             {activeSection === 'profile' && <div className="w-full animate-in fade-in zoom-in duration-300"><div className="max-w-2xl mx-auto mb-4"><button onClick={() => setActiveSection(null)} className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all border ${isMagical ? 'bg-slate-800 border-slate-700 text-amber-100 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><ChevronLeft size={18} /> {language === 'ka' ? 'მენიუ' : 'Menu'}</button></div><ProfileView /></div>}
 
           </main>
+
+          {/* ▼▼▼ COMPLIANCE FOOTER ADDED HERE ▼▼▼ */}
+          <Footer />
         </>
       )}
     </div>
@@ -230,6 +237,10 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/community" element={<Dashboard />} />
                 
+                {/* ▼▼▼ COMPLIANCE ROUTES (BOG) ▼▼▼ */}
+                <Route path="/about" element={<About />} />
+                <Route path="/legal" element={<Legal />} />
+
                 {/* ▼▼▼ FIXED: PRICING WITH WRAPPER ▼▼▼ */}
                 <Route path="/pricing" element={
                     <>
