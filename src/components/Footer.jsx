@@ -22,7 +22,7 @@ export default function Footer() {
         {/* LEFT: Copyright & Identity */}
         <div className="flex flex-col items-center md:items-start gap-2">
             <div className="text-sm font-bold opacity-80">
-            © {new Date().getFullYear()} Nimue's Grimoire LLC
+            © {new Date().getFullYear()} Nimue Med LLC
             </div>
             <div className="text-xs opacity-50">
                 Tbilisi, Georgia

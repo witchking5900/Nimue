@@ -8,11 +8,21 @@ export default function About({ onBack }) {
   const isMagical = theme === 'magical';
 
   // --- CONTENT CONFIGURATION ---
-  // ⚠️ ACTION REQUIRED: Fill these in with your REAL Legal Entity details
+  // Updated with Real Legal Entity details & Bilingual Support
   const companyInfo = {
-    name: "Nimue med LLC", // Your Registered Company Name
-    id: "ID: 418486132",          // Identification Number (Saidentifikatsio)
-    address: "Gori, Robakidze #26 Georgia", 
+    name: { 
+        en: "Nimue Med LLC", 
+        ka: "შპს ნიმუე მედ" 
+    },
+    idLabel: {
+        en: "ID",
+        ka: "ს/კ"
+    },
+    idValue: "418486132",
+    address: { 
+        en: "Robakidze St. #26, Gori, Georgia", 
+        ka: "საქართველო, გორი, რობაქიძის ქ. #26" 
+    }, 
     phone: "+995 551 000 177",
     email: "Witchking5900@gmail.com"
   };
@@ -21,8 +31,8 @@ export default function About({ onBack }) {
     title: { en: "About Us", ka: "ჩვენს შესახებ" },
     missionTitle: { en: "Our Mission", ka: "ჩვენი მისია" },
     mission: {
-      en: "Nimue's Grimoire bridges the gap between ancient medical wisdom and modern clinical practice. We provide a gamified platform for medical students to master complex theories through interactive challenges.",
-      ka: "Nimue's Grimoire აერთიანებს ძველ სამედიცინო სიბრძნესა და თანამედროვე კლინიკურ პრაქტიკას. ჩვენ ვქმნით გემიფიცირებულ პლატფორმას სტუდენტებისთვის რთული თეორიების ასათვისებლად."
+      en: "Nimue Med bridges the gap between ancient medical wisdom and modern clinical practice. We provide a gamified platform for medical students to master complex theories through interactive challenges.",
+      ka: "ნიმუე მედ აერთიანებს ძველ სამედიცინო სიბრძნესა და თანამედროვე კლინიკურ პრაქტიკას. ჩვენ ვქმნით გემიფიცირებულ პლატფორმას სტუდენტებისთვის რთული თეორიების ასათვისებლად."
     },
     contactTitle: { en: "Contact Information", ka: "საკონტაქტო ინფორმაცია" },
     serviceTitle: { en: "Service Description", ka: "მომსახურების აღწერა" },
@@ -71,14 +81,16 @@ export default function About({ onBack }) {
             
             <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                    <div className="font-bold text-lg">{companyInfo.name}</div>
-                    <div className="opacity-60 text-sm">{companyInfo.id}</div>
+                    {/* BILINGUAL COMPANY NAME */}
+                    <div className="font-bold text-lg">{companyInfo.name[language]}</div>
+                    <div className="opacity-60 text-sm">{companyInfo.idLabel[language]}: {companyInfo.idValue}</div>
                 </div>
                 
                 <div className="space-y-4">
                     <div className="flex items-center gap-3">
                         <MapPin size={20} className="opacity-50" />
-                        <span>{companyInfo.address}</span>
+                        {/* BILINGUAL ADDRESS */}
+                        <span>{companyInfo.address[language]}</span>
                     </div>
                     <div className="flex items-center gap-3">
                         <Phone size={20} className="opacity-50" />

@@ -58,7 +58,7 @@ export default function Legal() {
                     {language === 'ka' ? (
                         <>
                             <p><strong>1. ზოგადი დებულებები</strong><br/>
-                            წინამდებარე წესები და პირობები წარმოადგენს შეთანხმებას მომხმარებელსა და შპს "Nimue's med"-ს შორის (ს/კ: [418486132]). ვებ-გვერდით სარგებლობისას თქვენ ეთანხმებით ამ პირობებს.</p>
+                            წინამდებარე წესები და პირობები წარმოადგენს შეთანხმებას მომხმარებელსა და შპს "ნიმუე მედ"-ს შორის (ს/კ: 418486132). ვებ-გვერდით სარგებლობისას თქვენ ეთანხმებით ამ პირობებს.</p>
                             
                             <p><strong>2. მომსახურების აღწერა</strong><br/>
                             ჩვენ გთავაზობთ ციფრულ საგანმანათლებლო რესურსებს სამედიცინო სფეროში. სერვისი მოიცავს ონლაინ ტესტებს, კლინიკურ ქეისებს და თეორიულ მასალებს.</p>
@@ -68,11 +68,14 @@ export default function Legal() {
                             
                             <p><strong>4. ინტელექტუალური საკუთრება</strong><br/>
                             ვებ-გვერდზე განთავსებული ყველა მასალა (ტექსტი, დიზაინი, ლოგო) წარმოადგენს კომპანიის საკუთრებას. მასალების უნებართვო გავრცელება აკრძალულია.</p>
+
+                            <p><strong>5. მარეგულირებელი კანონმდებლობა</strong><br/>
+                            წინამდებარე პირობები რეგულირდება საქართველოს კანონმდებლობის შესაბამისად. დავის შემთხვევაში, საკითხს განიხილავს თბილისის საქალაქო სასამართლო.</p>
                         </>
                     ) : (
                         <>
                             <p><strong>1. General Provisions</strong><br/>
-                            These Terms and Conditions constitute an agreement between the user and Nimue's med LLC (ID: [418486132]). By using this website, you agree to these terms.</p>
+                            These Terms and Conditions constitute an agreement between the user and Nimue Med LLC (ID: 418486132). By using this website, you agree to these terms.</p>
                             
                             <p><strong>2. Service Description</strong><br/>
                             We provide digital educational resources in the medical field. Services include online quizzes, clinical cases, and theoretical materials.</p>
@@ -82,6 +85,9 @@ export default function Legal() {
                             
                             <p><strong>4. Intellectual Property</strong><br/>
                             All content on this website (text, design, logos) is the property of the company. Unauthorized distribution is prohibited.</p>
+
+                            <p><strong>5. Governing Law</strong><br/>
+                            These terms are governed by the laws of Georgia. Any disputes will be settled by the Tbilisi City Court.</p>
                         </>
                     )}
                 </div>
@@ -140,10 +146,10 @@ export default function Legal() {
                             
                             <div className="mt-8 p-4 border border-amber-500/30 bg-amber-500/10 rounded-xl text-sm">
                                 <strong>საკონტაქტო ინფორმაცია:</strong><br/>
-                                შპს "Nimue med"<br/>
-                                მისამართი: [Gori, Robakidze st #26, Georgia]<br/>
-                                ელ-ფოსტა: support@nimue.ge<br/>
-                                ტელ: +995 555 00 00 00
+                                შპს "ნიმუე მედ"<br/>
+                                მისამართი: საქართველო, გორი, რობაქიძის ქ. #26<br/>
+                                ელ-ფოსტა: Witchking5900@gmail.com<br/>
+                                ტელ: +995 551 000 177
                             </div>
                         </>
                     ) : (
@@ -159,10 +165,10 @@ export default function Legal() {
 
                             <div className="mt-8 p-4 border border-amber-500/30 bg-amber-500/10 rounded-xl text-sm">
                                 <strong>Contact Information:</strong><br/>
-                                Nimue' med LLC<br/>
-                                Address: [Gori, Robakidze st #26, Georgia]<br/>
-                                Email: support@nimue.ge<br/>
-                                Tel: +995 555 00 00 00
+                                Nimue Med LLC<br/>
+                                Address: Robakidze St. #26, Gori, Georgia<br/>
+                                Email: Witchking5900@gmail.com<br/>
+                                Tel: +995 551 000 177
                             </div>
                         </>
                     )}
