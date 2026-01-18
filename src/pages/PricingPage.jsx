@@ -12,7 +12,7 @@ export default function PricingPage() {
   const { theme, language } = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation(); // Used to check URL params
+  const location = useLocation();
   const isMagical = theme === 'magical';
   
   const [currentTier, setCurrentTier] = useState('apprentice');
@@ -23,39 +23,47 @@ export default function PricingPage() {
 
   // --- 1. CHECK SUBSCRIPTION & URL PARAMS ---
   useEffect(() => {
-    if (user) checkSubscription();
+    if (user) checkAndHandleStatus();
     else setLoading(false);
-
-    // CHECK FOR PAYMENT RESULT (When coming back from Bank)
-    const query = new URLSearchParams(location.search);
-    const paymentStatus = query.get('payment');
-
-    if (paymentStatus === 'success') {
-        alert(language === 'ka' ? "გადახდა წარმატებულია! კეთილი იყოს თქვენი მობრძანება." : "Payment Successful! Your tier has been upgraded.");
-        // Optional: Remove the param from URL so it doesn't trigger again on refresh
-        navigate('/pricing', { replace: true });
-        // Refresh subscription data
-        if(user) checkSubscription();
-    } else if (paymentStatus === 'fail') {
-        alert(language === 'ka' ? "გადახდა ვერ განხორციელდა ან გაუქმდა." : "Payment Failed or was Canceled.");
-        navigate('/pricing', { replace: true });
-    }
-
   }, [user, location.search]);
 
-  const checkSubscription = async () => {
+  const checkAndHandleStatus = async () => {
+    // 1. Get current Tier from DB
     const { data } = await supabase
       .from('profiles')
       .select('tier')
       .eq('id', user.id)
       .single();
     
-    if (data) setCurrentTier(data.tier || 'apprentice');
+    const realTier = data?.tier || 'apprentice';
+    setCurrentTier(realTier);
     setLoading(false);
+
+    // 2. Check URL for Payment Result
+    const query = new URLSearchParams(location.search);
+    const paymentStatus = query.get('payment');
+
+    if (paymentStatus) {
+        // Clear the URL so we don't loop
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        if (paymentStatus === 'success') {
+            alert(language === 'ka' ? "გადახდა წარმატებულია! კეთილი იყოს თქვენი მობრძანება." : "Payment Successful! Your tier has been upgraded.");
+        } 
+        else if (paymentStatus === 'fail') {
+            // SMART CHECK: If DB says Magus, ignore the 'fail' signal!
+            if (realTier === 'magus' || realTier === 'archmage') {
+                alert(language === 'ka' ? "გადახდა წარმატებულია! (ბანკის შეცდომის მიუხედავად)" : "Payment Successful! (Verified against database)");
+            } else {
+                alert(language === 'ka' ? "გადახდა ვერ განხორციელდა." : "Payment Failed.");
+            }
+        }
+    }
   };
 
-  // --- 2. PAYMENT LOGIC ---
-  const handleSubscribe = async (price) => {
+  // --- 2. PAYMENT LOGIC (UPDATED) ---
+  // Now accepts 'period' to tell the server if it is 1 week, 6 months, or lifetime
+  const handleSubscribe = async (price, period) => {
     if (!user) {
         alert(language === 'ka' ? "გთხოვთ გაიაროთ ავტორიზაცია" : "You must log in to subscribe.");
         navigate('/login');
@@ -69,7 +77,8 @@ export default function PricingPage() {
             body: {
                 action: 'create_order',
                 amount: price, 
-                user_id: user.id
+                user_id: user.id,
+                period: period // <--- CRITICAL UPDATE
             }
         });
 
@@ -277,7 +286,8 @@ export default function PricingPage() {
                             <div className="text-xs text-slate-500 uppercase">{text.oneTime}</div>
                         </div>
                         <button 
-                            onClick={() => handleSubscribe(150.00)}
+                            // UPDATED: Sends 'lifetime' to backend
+                            onClick={() => handleSubscribe(150.00, 'lifetime')}
                             disabled={processing}
                             className={`font-bold py-3 px-8 rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-wait ${
                                 isMagical 
@@ -373,9 +383,10 @@ export default function PricingPage() {
                     </div>
 
                     <button 
+                        // UPDATED: Sends selected price AND ID (e.g. '1_week', '6_month')
                         onClick={() => {
                             const selected = magusOptions.find(o => o.id === selectedPeriod);
-                            handleSubscribe(selected.price); 
+                            handleSubscribe(selected.price, selected.id); 
                         }}
                         disabled={processing}
                         className={`w-full mt-8 font-bold py-4 rounded-xl shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-wait ${

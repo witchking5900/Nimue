@@ -1,173 +1,229 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const CLIENT_ID = Deno.env.get('BOG_CLIENT_ID')
-const CLIENT_SECRET = Deno.env.get('BOG_CLIENT_SECRET')
-const BOG_AUTH_URL = 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
-const BOG_ORDER_URL = 'https://api-sandbox.bog.ge/payments/v1/ecommerce/orders'
-const SUPABASE_URL = Deno.env.get('BOG_CALLBACK_URL')
-const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'
-
-console.log("--------------- NEW REQUEST ---------------")
-console.log("Config Check:", { 
-  hasClientId: !!CLIENT_ID, 
-  hasSecret: !!CLIENT_SECRET, 
-  callbackUrl: SUPABASE_URL 
-})
-
-function base64Encode(str: string): string {
-  return btoa(unescape(encodeURIComponent(str)))
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
-  // 1. HANDLE REDIRECTS (GET)
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  const CLIENT_ID = Deno.env.get('BOG_CLIENT_ID') || '10000067'
+  const CLIENT_SECRET = Deno.env.get('BOG_CLIENT_SECRET') || 'In5caljru5lc'
+  const BOG_AUTH_URL = 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
+  const BOG_ORDER_URL = 'https://api-sandbox.bog.ge/payments/v1/ecommerce/orders'
+  const CALLBACK_URL = Deno.env.get('BOG_CALLBACK_URL') || 'https://eqrodswdgbdkpjwfnefb.supabase.co/functions/v1/bog-payment'
+  const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+  const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+  const reqUrl = new URL(req.url)
+
+  // 1. GET REDIRECT
   if (req.method === 'GET') {
-    const url = new URL(req.url)
-    const outcome = url.searchParams.get('outcome')
-    const orderId = url.searchParams.get('order_id')
-    
-    console.log(`🔀 Redirecting User. Outcome: ${outcome}, OrderID: ${orderId}`)
-    
-    const isWin = outcome === 'win' || outcome === 'success'
-    const target = isWin ? `${FRONTEND_URL}?payment=success` : `${FRONTEND_URL}?payment=fail`
-    
-    return new Response(null, {
-      status: 302,
-      headers: {
-        'Location': target,
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      }
-    })
+    const outcome = reqUrl.searchParams.get('outcome')
+    const target = `${FRONTEND_URL}?payment=${outcome === 'success' || outcome === 'win' ? 'success' : 'fail'}`
+    return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': target } })
   }
 
   try {
-    if (req.method === 'OPTIONS') {
-      return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
-    }
-
     let body = {}
-    try {
-      body = await req.json()
-      console.log("📥 Request Body Received:", JSON.stringify(body))
-    } catch(e) {
-      console.error("❌ Body parse error", e)
+    try { body = await req.json() } catch(e) {
+      console.error("Failed to parse JSON body:", e)
     }
 
-    // 2. CREATE ORDER (POST)
-    if (body.action === 'create_order') {
-      console.log("🔹 Action: Create Order")
+    // 2. WEBHOOK (POST) - UPDATE DB
+    if (body.order_id || body.status || body.event) {
+      console.log("=== WEBHOOK RECEIVED ===")
+      console.log("Full body:", JSON.stringify(body, null, 2))
       
-      const amount = Number(body.amount || 10)
-      console.log(`🔹 Amount: ${amount}`)
+      // FIX: Extract status from nested structure
+      const webhookBody = body.body || body
+      const status = webhookBody.order_status?.key || body.order_status?.key || body.status
+      const userId = reqUrl.searchParams.get('user_id')
+      const period = reqUrl.searchParams.get('period') || '1_month'
 
-      // A. Get Token
-      console.log("🔹 Step 1: Requesting Auth Token...")
-      const authString = base64Encode(`${CLIENT_ID}:${CLIENT_SECRET}`)
+      console.log(`Status: ${status}, UserId: ${userId}, Period: ${period}`)
+
+      if (status === 'completed' && userId && SUPABASE_URL && SUPABASE_KEY) {
+        console.log("✅ Payment completed, upgrading user...")
+        
+        // --- CALCULATE DURATION ---
+        let days = 30
+        if (period === '1_week') days = 7
+        if (period === '1_month') days = 30
+        if (period === '6_month') days = 180
+        if (period === '12_month') days = 365
+        if (period === 'lifetime') days = 36500
+
+        const expiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+        const newTier = period === 'lifetime' ? 'archmage' : 'magus'
+
+        console.log(`Upgrading to ${newTier}, expires: ${expiry}`)
+
+        // A. UPDATE PROFILE
+        const profileResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: { 
+            'apikey': SUPABASE_KEY, 
+            'Authorization': `Bearer ${SUPABASE_KEY}`, 
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ tier: newTier })
+        })
+        
+        if (!profileResp.ok) {
+          const errorText = await profileResp.text()
+          console.error("❌ Profile update failed:", errorText)
+        } else {
+          const profileData = await profileResp.json()
+          console.log("✅ Profile updated:", profileData)
+        }
+        
+        // B. UPSERT SUBSCRIPTION (update if exists, insert if not)
+        const subResp = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions`, {
+          method: 'POST',
+          headers: { 
+            'apikey': SUPABASE_KEY, 
+            'Authorization': `Bearer ${SUPABASE_KEY}`, 
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation,resolution=merge-duplicates'
+          },
+          body: JSON.stringify({ 
+            user_id: userId, 
+            status: 'active', 
+            tier: newTier,
+            plan_id: period,
+            current_period_start: new Date().toISOString(),
+            current_period_end: expiry,
+            updated_at: new Date().toISOString()
+          })
+        })
+
+        if (!subResp.ok) {
+          const errorText = await subResp.text()
+          console.error("❌ Subscription failed:", errorText)
+        } else {
+          const subData = await subResp.json()
+          console.log("✅ Subscription created/updated:", subData)
+        }
+
+        console.log("=== WEBHOOK PROCESSING COMPLETE ===")
+      } else {
+        console.log(`⏸️ Skipping upgrade: status=${status}, userId=${userId}`)
+      }
       
-      const tokenResponse = await fetch(BOG_AUTH_URL, {
+      return new Response("OK", { status: 200, headers: corsHeaders })
+    }
+
+    // 3. CREATE ORDER (POST)
+    if (body.action === 'create_order') {
+      console.log("=== CREATE ORDER REQUEST ===")
+      const amount = Number(body.amount || 10)
+      const userId = body.user_id || 'unknown'
+      const period = body.period || '1_month'
+
+      console.log(`Amount: ${amount} GEL, User: ${userId}, Period: ${period}`)
+
+      // Auth
+      const authString = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)
+      const tokenResp = await fetch(BOG_AUTH_URL, {
         method: 'POST',
-        headers: {
-          'Authorization': `Basic ${authString}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
+        headers: { 
+          'Authorization': `Basic ${authString}`, 
+          'Content-Type': 'application/x-www-form-urlencoded' 
         },
         body: 'grant_type=client_credentials'
       })
-
-      const tokenData = await tokenResponse.json()
-      console.log("🔹 Auth Response Status:", tokenResponse.status)
       
-      if (!tokenResponse.ok) {
-        console.error("❌ Auth Failed Response:", tokenData)
-        throw new Error(`Auth Failed: ${JSON.stringify(tokenData)}`)
+      if (!tokenResp.ok) {
+        const errText = await tokenResp.text()
+        console.error("❌ Auth failed:", errText)
+        return new Response(JSON.stringify({ error: `Auth failed: ${errText}` }), { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        })
       }
-      console.log("✅ Auth Token Received")
+      
+      const tokenData = await tokenResp.json()
+      console.log("✅ Auth token received")
 
-      // B. Send Order
-      const externalOrderId = crypto.randomUUID()
-      console.log(`🔹 Generated External ID: ${externalOrderId}`)
-
-      const orderPayload = {
-        callback_url: SUPABASE_URL,
-        external_order_id: externalOrderId,
-        purchase_units: {
-          currency: "GEL",
-          total_amount: amount,
-          basket: [{
-            quantity: 1,
-            unit_price: amount,
-            product_id: "sub_1",
-            description: "Medical Subscription"
-          }]
+      // Order
+      const externalId = crypto.randomUUID()
+      const smartCallbackUrl = `${CALLBACK_URL}?user_id=${userId}&period=${period}`
+      
+      const payload = {
+        callback_url: smartCallbackUrl,
+        external_order_id: externalId,
+        purchase_units: { 
+          currency: "GEL", 
+          total_amount: amount, 
+          basket: [{ 
+            quantity: 1, 
+            unit_price: amount, 
+            product_id: `sub_${period}`, 
+            description: `Subscription: ${period}` 
+          }] 
         },
-        // CRITICAL FIX: Explicitly set card for sandbox
         payment_method: ["card"],
         capture: "automatic",
         redirect_urls: {
-          fail: `${SUPABASE_URL}?outcome=fail&order_id=${externalOrderId}`,
-          success: `${SUPABASE_URL}?outcome=success&order_id=${externalOrderId}`
+          fail: `${CALLBACK_URL}?outcome=fail&order_id=${externalId}`,
+          success: `${CALLBACK_URL}?outcome=success&order_id=${externalId}`
         }
       }
 
-      console.log("🔹 Step 2: Sending Order Payload to BOG:", JSON.stringify(orderPayload))
+      console.log("Sending order to BOG:", JSON.stringify(payload, null, 2))
 
-      const orderResponse = await fetch(BOG_ORDER_URL, {
+      const orderResp = await fetch(BOG_ORDER_URL, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
-          'Content-Type': 'application/json',
-          'Accept-Language': 'en'
+        headers: { 
+          'Authorization': `Bearer ${tokenData.access_token}`, 
+          'Content-Type': 'application/json', 
+          'Accept-Language': 'en' 
         },
-        body: JSON.stringify(orderPayload)
+        body: JSON.stringify(payload)
       })
-
-      const orderData = await orderResponse.json()
-      console.log("🔹 Order Response Status:", orderResponse.status)
-      console.log("🔹 Order Response Body:", JSON.stringify(orderData))
-
-      if (!orderResponse.ok) {
-        console.error("❌ Order Creation Failed:", orderData)
-        throw new Error(`Order Failed: ${JSON.stringify(orderData)}`)
+      
+      const orderData = await orderResp.json()
+      console.log("BOG response:", JSON.stringify(orderData, null, 2))
+      
+      if (!orderResp.ok) {
+        console.error("❌ Order creation failed:", orderData)
+        return new Response(JSON.stringify({ error: `Order failed: ${JSON.stringify(orderData)}` }), { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        })
       }
 
-      // C. Extract Link
-      let paymentUrl = null
-      if (orderData._links?.redirect?.href) paymentUrl = orderData._links.redirect.href
-      else if (orderData.redirect_links?.success) paymentUrl = orderData.redirect_links.success
-      else if (orderData.payment_url) paymentUrl = orderData.payment_url
-      else if (orderData.redirect_url) paymentUrl = orderData.redirect_url
+      const link = orderData._links?.redirect?.href || orderData.redirect_links?.success || orderData.payment_url
 
-      console.log(`✅ Payment URL Found: ${paymentUrl}`)
-
-      if (!paymentUrl) {
-        throw new Error(`Order created but no URL found: ${JSON.stringify(orderData)}`)
+      if (!link) {
+        console.error("❌ No payment link in response")
+        return new Response(JSON.stringify({ error: "No payment link found" }), { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        })
       }
 
-      return new Response(
-        JSON.stringify({
-          payment_url: paymentUrl,
-          order_id: externalOrderId
-        }),
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
-        }
-      )
+      console.log("✅ Payment URL:", link)
+      return new Response(JSON.stringify({ payment_url: link }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      })
     }
 
-    return new Response(JSON.stringify({ error: "Invalid Action" }), { status: 400 })
+    console.log("⚠️ Unknown request type")
+    return new Response(JSON.stringify({ error: "Invalid action" }), { 
+      status: 400, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    })
 
   } catch (error) {
-    console.error("❌ CRITICAL FUNCTION ERROR:", error)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      }
-    )
+    console.error("💥 Server error:", error)
+    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), { 
+      status: 200, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    })
   }
 })
