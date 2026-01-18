@@ -325,7 +325,7 @@ export default function CommunityHub({ onBack }) {
   const handleReport = async (item, type) => {
       if (!confirm(text.reportConfirm)) return;
       // 🛑 REPLACE WITH YOUR REAL ARCHMAGE ID
-      const ARCHMAGE_ID = "69a13b7d-53c3-40e0-8ad2-8b93440e7aad"; 
+      const ARCHMAGE_ID = "1279a5ed-bd3d-48e6-8338-a5a36c19cdff"; 
 
       try {
           await supabase.from('notifications').insert({

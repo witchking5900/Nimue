@@ -36,7 +36,6 @@ export default function PricingPage() {
     setLoading(false);
   };
 
-  // ▼▼▼ THE REAL PAYMENT LOGIC (DEBUG VERSION) ▼▼▼
   const handleSubscribe = async (price) => {
     if (!user) {
         alert(language === 'ka' ? "გთხოვთ გაიაროთ ავტორიზაცია" : "You must log in to subscribe.");
@@ -47,9 +46,6 @@ export default function PricingPage() {
     try {
         setProcessing(true);
 
-        console.log("🚀 Starting Payment for:", price);
-
-        // 2. Call the Bank (Edge Function)
         const { data, error } = await supabase.functions.invoke('bog-payment', {
             body: {
                 action: 'create_order',
@@ -58,22 +54,15 @@ export default function PricingPage() {
             }
         });
 
-        // 🛑 DEBUGGING POINT 🛑
         if (error) {
-            console.error("❌ SUPABASE FUNCTION ERROR:", error);
-            // We try to read the internal error text if Supabase attached it
             let detailedError = error.message;
             if (error.context && error.context.json) {
-                // If the function sent back {"error": "Bank Auth Failed"}
                 const body = await error.context.json(); 
                 if (body.error) detailedError = body.error;
             }
             throw new Error(detailedError);
         }
 
-        console.log("✅ Bank Response:", data);
-
-        // 3. Redirect
         if (data.payment_url) {
             window.location.href = data.payment_url;
         } else {
@@ -81,9 +70,7 @@ export default function PricingPage() {
         }
 
     } catch (error) {
-        console.error("🔥 FINAL CATCH ERROR:", error);
-        
-        // ▼▼▼ THE DIAGNOSTIC ALERT ▼▼▼
+        console.error("Payment error:", error);
         alert(`⚠️ PAYMENT FAILED ⚠️\n\nReason: ${error.message}\n\n(Check the Console F12 for more details)`);
     } finally {
         setProcessing(false); 

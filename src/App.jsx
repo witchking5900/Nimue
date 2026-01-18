@@ -23,21 +23,17 @@ import { Book, GraduationCap, LogOut, ChevronLeft, Users, Crown } from 'lucide-r
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 
-// ▼▼▼ NEW IMPORTS (Pricing & Security & Banner) ▼▼▼
+// ▼▼▼ NEW IMPORTS ▼▼▼
 import PricingPage from './pages/PricingPage';
 import SecurityManager from './pages/admin/components/SecurityManager';
 import ExpirationBanner from './components/ExpirationBanner';
-
-// ▼▼▼ PAYMENT SUCCESS PAGE (ADDED) ▼▼▼
 import PaymentSuccess from './pages/PaymentSuccess';
-
-// ▼▼▼ COMPLIANCE IMPORTS (BOG Requirements) ▼▼▼
 import About from './pages/About';
 import Legal from './pages/Legal';
 import Footer from './components/Footer';
 
-// ▼▼▼ SUPABASE CLIENT IMPORT (REQUIRED FOR ROLE UPDATE) ▼▼▼
-import { supabase } from './supabaseClient'; // Ensure this file exists in your src folder
+// ▼▼▼ SUPABASE CLIENT ▼▼▼
+import { supabase } from './supabaseClient'; 
 
 const translations = {
   en: {
@@ -66,24 +62,24 @@ const translations = {
   }
 };
 
-// --- HELPER: Fixes Profile Navigation from Pricing Page ---
 const PricingNavbarWrapper = () => {
     const navigate = useNavigate();
     return <Navbar onOpenProfile={() => navigate('/?section=profile')} />;
 };
 
-// --- PROTECTED GRIMOIRE WRAPPER ---
 const GrimoireRoute = () => {
     const { tier } = useGameLogic();
     const { addToast } = useToast();
     const navigate = useNavigate();
     
+    // Allow magus and above
     const allowedTiers = ['magus', 'grand_magus', 'insubstantial', 'archmage'];
     const hasAccess = allowedTiers.includes(tier);
 
     useEffect(() => {
         if (!hasAccess) {
-            addToast("Only Magus rank and above can enter the Grimoire.", "error");
+            // Optional: Don't spam toast if redirecting on load
+            // addToast("Only Magus rank can enter.", "error"); 
             navigate('/'); 
         }
     }, [hasAccess, navigate, addToast]);
@@ -96,16 +92,14 @@ const GrimoireRoute = () => {
 function Dashboard() {
   const { theme, language } = useTheme();
   const { user, signOut } = useAuth();
-  const { addToast } = useToast(); // Use toast for notifications
+  const { addToast } = useToast(); 
   const isMagical = theme === 'magical';
   const t = translations[language];
 
   const [searchParams] = useSearchParams();
   
   const getInitialSection = () => {
-      // ▼▼▼ FIXED: Check for 'profile' in URL ▼▼▼
       if (searchParams.get('section') === 'profile') return 'profile';
-      
       if (searchParams.get('inscription')) return 'theory';
       if (searchParams.get('community')) return 'community';
       if (searchParams.get('trial')) return 'apps';
@@ -117,38 +111,34 @@ function Dashboard() {
   const [activeSection, setActiveSection] = useState(getInitialSection());
 
   // ---------------------------------------------------------
-  // 1. PAYMENT SUCCESS LOGIC (THE NEW PART)
+  // 1. PAYMENT SUCCESS LOGIC (RPC MODE - BULLETPROOF)
   // ---------------------------------------------------------
   useEffect(() => {
     const checkPayment = async () => {
       const paymentStatus = searchParams.get('payment');
 
       if (paymentStatus === 'success' && user) {
-        // Prevent running this multiple times
+        
         if (localStorage.getItem('payment_processed') === 'true') return;
 
-        addToast("Payment Verified! Upgrading your account...", "info");
-        localStorage.setItem('payment_processed', 'true');
-
-        // UPDATE THE USER ROLE IN SUPABASE
-        // Note: Changing role to 'magus' so they can access Grimoire
-        const { error } = await supabase
-          .from('profiles') 
-          .update({ role: 'magus' }) 
-          .eq('id', user.id);
+        addToast("Payment Verified! Unlocking Magus Tier...", "info");
+        
+        // ▼▼▼ THE FIX: USE THE ADMIN FUNCTION ▼▼▼
+        // This bypasses all RLS permissions and forces the update.
+        const { error } = await supabase.rpc('upgrade_to_magus');
 
         if (error) {
-          console.error('Error updating role:', error);
-          addToast("Database Error: " + error.message, "error");
-          localStorage.removeItem('payment_processed'); // Allow retry
+          console.error('❌ Upgrade Failed:', error);
+          addToast("Upgrade Error: " + error.message, "error");
         } else {
-          addToast("🎉 Success! You are now a Magus.", "success");
+          localStorage.setItem('payment_processed', 'true');
+          addToast("🎉 You are now a Magus!", "success");
           
-          // Clean the URL (remove ?payment=success)
+          // Clean URL
           const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
           window.history.replaceState({}, document.title, newUrl);
 
-          // Reload page after 1.5s to ensure GameContext updates the tier
+          // Force Reload to ensure GameContext fetches new tier
           setTimeout(() => {
              localStorage.removeItem('payment_processed');
              window.location.reload(); 
@@ -164,7 +154,7 @@ function Dashboard() {
   }, [searchParams, user, addToast]);
 
   // ---------------------------------------------------------
-  // 2. EXISTING NAVIGATION LOGIC
+  // 2. NAVIGATION LOGIC
   // ---------------------------------------------------------
   useEffect(() => {
     const sectionParam = searchParams.get('section');
@@ -176,7 +166,6 @@ function Dashboard() {
     
     let detected = false;
 
-    // ▼▼▼ FIXED: Handle Profile Navigation ▼▼▼
     if (sectionParam === 'profile') {
       setActiveSection('profile');
       detected = true;
@@ -237,7 +226,6 @@ function Dashboard() {
 
           <main className="container mx-auto p-4 md:p-8 flex-1 flex flex-col">
             
-            {/* ▼▼▼ EXPIRATION BANNER ▼▼▼ */}
             <ExpirationBanner />
 
             {!activeSection && (
@@ -273,7 +261,6 @@ function Dashboard() {
 
           </main>
 
-          {/* ▼▼▼ COMPLIANCE FOOTER ▼▼▼ */}
           <Footer />
         </>
       )}
@@ -287,39 +274,23 @@ export default function App() {
       <ThemeProvider>
         <ToastProvider>
           <GameProvider>
-            {/* SECURITY WRAPS ROUTES */}
             <SecurityOverlay>
               <Routes>
-                {/* PUBLIC ROUTES */}
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/community" element={<Dashboard />} />
-                
-                {/* ▼▼▼ COMPLIANCE ROUTES (BOG) ▼▼▼ */}
                 <Route path="/about" element={<About />} />
                 <Route path="/legal" element={<Legal />} />
-
-                {/* ▼▼▼ PAYMENT SUCCESS ROUTE (ADDED) ▼▼▼ */}
                 <Route path="/payment/success" element={<PaymentSuccess />} />
-
-                {/* ▼▼▼ PRICING WITH WRAPPER ▼▼▼ */}
                 <Route path="/pricing" element={
                     <>
                         <PricingNavbarWrapper /> 
                         <PricingPage />
                     </>
                 } />
-
-                {/* ADMIN ROUTES */}
                 <Route path="/admin" element={<AdminLogin />} />
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                
-                {/* SECURITY MANAGER ROUTE */}
                 <Route path="/admin/security" element={<SecurityManager />} />
-                
-                {/* PROTECTED GRIMOIRE ROUTE */}
                 <Route path="/grimoire" element={<GrimoireRoute />} />
-                
-                {/* FALLBACK */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </SecurityOverlay>
