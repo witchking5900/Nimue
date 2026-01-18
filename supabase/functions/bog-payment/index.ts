@@ -9,10 +9,9 @@ const CLIENT_SECRET = 'In5caljru5lc'
 const BOG_AUTH_URL = 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
 const BOG_ORDER_URL = 'https://api-sandbox.bog.ge/payments/v1/ecommerce/orders'
 
-// Your website URL
-const CALLBACK_URL = 'https://eqrodswdgbdkpjwfnefb.supabase.co/payment/success' 
-// We also need a fail URL for the bank to redirect to if it cancels
-const FAIL_URL = 'https://eqrodswdgbdkpjwfnefb.supabase.co/payment/fail'
+// ✅ NEW (Points to your running website)
+const CALLBACK_URL = 'http://localhost:5173?payment=success' 
+const FAIL_URL = 'http://localhost:5173?payment=fail'
 
 console.log("🚀 BOG Function Started (SANDBOX MODE)")
 
