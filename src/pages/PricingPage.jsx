@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Check, Sparkles, Crown, Loader2, Zap, ChevronLeft, Shield } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -12,6 +12,7 @@ export default function PricingPage() {
   const { theme, language } = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation(); // Used to check URL params
   const isMagical = theme === 'magical';
   
   const [currentTier, setCurrentTier] = useState('apprentice');
@@ -20,10 +21,27 @@ export default function PricingPage() {
   
   const [selectedPeriod, setSelectedPeriod] = useState('1_month');
 
+  // --- 1. CHECK SUBSCRIPTION & URL PARAMS ---
   useEffect(() => {
     if (user) checkSubscription();
     else setLoading(false);
-  }, [user]);
+
+    // CHECK FOR PAYMENT RESULT (When coming back from Bank)
+    const query = new URLSearchParams(location.search);
+    const paymentStatus = query.get('payment');
+
+    if (paymentStatus === 'success') {
+        alert(language === 'ka' ? "გადახდა წარმატებულია! კეთილი იყოს თქვენი მობრძანება." : "Payment Successful! Your tier has been upgraded.");
+        // Optional: Remove the param from URL so it doesn't trigger again on refresh
+        navigate('/pricing', { replace: true });
+        // Refresh subscription data
+        if(user) checkSubscription();
+    } else if (paymentStatus === 'fail') {
+        alert(language === 'ka' ? "გადახდა ვერ განხორციელდა ან გაუქმდა." : "Payment Failed or was Canceled.");
+        navigate('/pricing', { replace: true });
+    }
+
+  }, [user, location.search]);
 
   const checkSubscription = async () => {
     const { data } = await supabase
@@ -36,6 +54,7 @@ export default function PricingPage() {
     setLoading(false);
   };
 
+  // --- 2. PAYMENT LOGIC ---
   const handleSubscribe = async (price) => {
     if (!user) {
         alert(language === 'ka' ? "გთხოვთ გაიაროთ ავტორიზაცია" : "You must log in to subscribe.");
@@ -63,15 +82,15 @@ export default function PricingPage() {
             throw new Error(detailedError);
         }
 
-        if (data.payment_url) {
+        if (data?.payment_url) {
             window.location.href = data.payment_url;
         } else {
-            throw new Error("No payment URL received in response.");
+            throw new Error("No payment URL received.");
         }
 
     } catch (error) {
         console.error("Payment error:", error);
-        alert(`⚠️ PAYMENT FAILED ⚠️\n\nReason: ${error.message}\n\n(Check the Console F12 for more details)`);
+        alert(`⚠️ PAYMENT ERROR: ${error.message}`);
     } finally {
         setProcessing(false); 
     }

@@ -6,12 +6,13 @@ const CLIENT_SECRET = Deno.env.get('BOG_CLIENT_SECRET') || 'In5caljru5lc'
 
 const BOG_AUTH_URL = 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
 const BOG_ORDER_URL = 'https://api-sandbox.bog.ge/payments/v1/ecommerce/orders'
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 'https://eqrodswdgbdkpjwfnefb.supabase.co/functions/v1/bog-payment'
+// Ensure this matches your Supabase Secret name exactly
+const SUPABASE_URL = Deno.env.get('BOG_CALLBACK_URL') || 'https://eqrodswdgbdkpjwfnefb.supabase.co/functions/v1/bog-payment'
 const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'
 
 console.log("🚀 BOG Function Started (LOGIC RESTORED)")
 
-// Helper function for base64 encoding (more reliable in Deno)
+// Helper function for base64 encoding
 function base64Encode(str: string): string {
   return btoa(unescape(encodeURIComponent(str)))
 }
@@ -61,10 +62,6 @@ serve(async (req) => {
     // A. HANDLE BANK CALLBACK/WEBHOOK
     if (body.order_id || body.status || body.event || body.type) {
         // TODO: Process payment status update here
-        // - Verify payment status
-        // - Update user subscription in database
-        // - Send notification if needed
-        
         return new Response("OK", { 
           status: 200,
           headers: { 'Content-Type': 'text/plain' }
@@ -73,10 +70,11 @@ serve(async (req) => {
 
     // B. HANDLE ORDER CREATION
     if (body.action === 'create_order') {
-      const amount = body.amount || 10
-      const userId = body.user_id || 'unknown'
+      // 1. Force amount to be a Number
+      const rawAmount = body.amount || 10
+      const amount = Number(rawAmount)
       
-      // 1. Get Token
+      // 2. Get Token
       const authString = base64Encode(`${CLIENT_ID}:${CLIENT_SECRET}`)
       const tokenResponse = await fetch(BOG_AUTH_URL, {
         method: 'POST',
@@ -93,7 +91,7 @@ serve(async (req) => {
         throw new Error(`Auth Failed: ${JSON.stringify(tokenData)}`)
       }
       
-      // 2. Create Order
+      // 3. Create Order
       const externalOrderId = crypto.randomUUID()
       
       const orderPayload = {
@@ -109,6 +107,10 @@ serve(async (req) => {
             description: "Medical Subscription" 
           }]
         },
+        // ▼▼▼ FIX: FORCE CARD METHOD FOR SANDBOX ▼▼▼
+        payment_method: ["card"], 
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+        
         capture: "automatic",
         application_type: "web", 
         redirect_urls: {
@@ -137,28 +139,17 @@ serve(async (req) => {
       // Try multiple possible response structures
       let paymentUrl = null
       
-      // Check for _links.redirect.href (HAL format)
       if (orderData._links && orderData._links.redirect && orderData._links.redirect.href) {
         paymentUrl = orderData._links.redirect.href
       }
-      // Check for redirect_links.success (alternative format)
       else if (orderData.redirect_links && orderData.redirect_links.success) {
         paymentUrl = orderData.redirect_links.success
       }
-      // Check for payment_url (direct field)
       else if (orderData.payment_url) {
         paymentUrl = orderData.payment_url
       }
-      // Check for redirect_url (direct field)
       else if (orderData.redirect_url) {
         paymentUrl = orderData.redirect_url
-      }
-      // Check for links array
-      else if (orderData.links && Array.isArray(orderData.links)) {
-        const redirectLink = orderData.links.find(link => link.rel === 'redirect' || link.rel === 'payment')
-        if (redirectLink && redirectLink.href) {
-          paymentUrl = redirectLink.href
-        }
       }
       
       if (!paymentUrl) {
