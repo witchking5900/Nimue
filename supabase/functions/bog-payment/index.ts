@@ -3,13 +3,22 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 // ▼▼▼ KEYS FROM YOUR SCREENSHOT ▼▼▼
 const CLIENT_ID = '10000067'
 const CLIENT_SECRET = 'In5caljru5lc'
-const CALLBACK_URL = 'https://eqrodswdgbdkpjwfnefb.supabase.co/payment/success' 
 
-console.log("🚀 BOG UNIVERSAL LOADER - VERSION 777") 
+// ▼▼▼ SANDBOX URLs (From your Document) ▼▼▼
+// ⚠️ These are different from the Real Bank URLs!
+const BOG_AUTH_URL = 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
+const BOG_ORDER_URL = 'https://api-sandbox.bog.ge/payments/v1/ecommerce/orders'
+
+// Your website URL
+const CALLBACK_URL = 'https://eqrodswdgbdkpjwfnefb.supabase.co/payment/success' 
+// We also need a fail URL for the bank to redirect to if it cancels
+const FAIL_URL = 'https://eqrodswdgbdkpjwfnefb.supabase.co/payment/fail'
+
+console.log("🚀 BOG Function Started (SANDBOX MODE)")
 
 serve(async (req) => {
   try {
-    // CORS Headers
+    // 1. CORS Headers
     if (req.method === 'OPTIONS') {
       return new Response('ok', { 
         headers: {
@@ -22,107 +31,94 @@ serve(async (req) => {
     const { action, amount } = await req.json()
 
     if (action === 'create_order') {
-      console.log(`💳 Processing Order: ${amount} GEL`)
-      
+      console.log(`💳 Processing Sandbox Order: ${amount} GEL`)
+
+      // --- STEP 1: GET TOKEN (FROM SANDBOX) ---
       const authString = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)
-      let accessToken = null
-      let usedUrl = ''
+      
+      const tokenResponse = await fetch(BOG_AUTH_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${authString}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: 'grant_type=client_credentials'
+      })
 
-      // ---------------------------------------------------------
-      // ATTEMPT 1: TRY THE DEV SERVER (dev.ipay.ge)
-      // ---------------------------------------------------------
-      console.log("🔸 Attempt 1: Trying DEV Server...")
-      try {
-        const devToken = await fetch('https://dev.ipay.ge/opay/api/v1/oauth2/token', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${authString}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: 'grant_type=client_credentials'
-        })
-        const devData = await devToken.json()
-        if (devToken.ok && devData.access_token) {
-            accessToken = devData.access_token
-            usedUrl = 'https://dev.ipay.ge/opay/api/v1/checkout/orders'
-            console.log("✅ SUCCESS on DEV Server!")
-        }
-      } catch (e) { console.log("Dev Server failed or unreachable") }
-
-      // ---------------------------------------------------------
-      // ATTEMPT 2: TRY THE PROD SERVER (ipay.ge)
-      // ---------------------------------------------------------
-      if (!accessToken) {
-        console.log("🔸 Attempt 2: Trying PROD Server...")
-        try {
-            const prodToken = await fetch('https://ipay.ge/opay/api/v1/oauth2/token', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Basic ${authString}`,
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: 'grant_type=client_credentials'
-            })
-            const prodData = await prodToken.json()
-            if (prodToken.ok && prodData.access_token) {
-                accessToken = prodData.access_token
-                usedUrl = 'https://ipay.ge/opay/api/v1/checkout/orders'
-                console.log("✅ SUCCESS on PROD Server!")
-            } else {
-                // If both fail, return the error from PROD
-                console.error("❌ PROD Auth also failed:", prodData)
-                return new Response(
-                    JSON.stringify({ error: "Auth Failed on ALL servers. Check Keys.", details: prodData }),
-                    { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-                )
-            }
-        } catch (e) { console.log("Prod Server failed") }
+      const tokenData = await tokenResponse.json()
+      
+      if (!tokenResponse.ok) {
+        console.error("❌ Sandbox Auth Failed:", tokenData)
+        return new Response(
+          JSON.stringify({ error: "Sandbox Auth Failed", details: tokenData }),
+          { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        )
       }
 
-      if (!accessToken) throw new Error("Could not connect to Bank API")
+      const accessToken = tokenData.access_token
+      console.log("✅ Sandbox Token Received")
 
-      // ---------------------------------------------------------
-      // STEP 3: CREATE ORDER (Using the working URL)
-      // ---------------------------------------------------------
-      const orderResponse = await fetch(usedUrl, {
+      // --- STEP 2: CREATE ORDER (ON SANDBOX) ---
+      // The Sandbox API requires a specific structure (Source 245 in your doc)
+      const orderResponse = await fetch(BOG_ORDER_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Accept-Language': 'ka'
         },
         body: JSON.stringify({
-          intent: 'CAPTURE',
-          items: [{
-              amount: String(amount), 
-              currency: 'GEL',
-              description: 'Medical Subscription',
-              quantity: 1,
-              product_id: 'sub_1'
-          }],
-          locale: 'ka',
-          shop_order_id: crypto.randomUUID(), 
-          redirect_url: CALLBACK_URL,
-          show_shop_order_id_on_extract: true,
-          capture_method: 'AUTOMATIC'
+          callback_url: CALLBACK_URL,
+          external_order_id: crypto.randomUUID(),
+          purchase_units: {
+            currency: "GEL",
+            total_amount: amount,
+            basket: [
+              {
+                quantity: 1,
+                unit_price: amount,
+                product_id: "sub_1",
+                description: "Medical Subscription"
+              }
+            ]
+          },
+          redirect_urls: {
+            fail: FAIL_URL,
+            success: CALLBACK_URL
+          }
         })
       })
 
       const orderData = await orderResponse.json()
-      
-      // Find Redirect Link
-      let redirectUrl = orderData.payment_url || null
-      if (!redirectUrl && orderData.links) {
-        const link = orderData.links.find((l: any) => l.rel === 'approve' || l.method === 'REDIRECT')
-        if (link) redirectUrl = link.href
+
+      if (!orderResponse.ok) {
+        console.error("❌ Sandbox Order Failed:", orderData)
+        return new Response(
+          JSON.stringify({ error: "Order Failed", details: orderData }),
+          { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+        )
       }
-      if (!redirectUrl && orderData._links?.redirect) redirectUrl = orderData._links.redirect.href
+
+      console.log("✅ Order Created:", orderData)
+
+      // Get the redirect link (Source 258 in your doc)
+      // It's inside _links -> redirect -> href
+      const redirectUrl = orderData._links?.redirect?.href
+
+      if (!redirectUrl) {
+         throw new Error("No redirect URL found in Bank response")
+      }
 
       return new Response(
         JSON.stringify({ payment_url: redirectUrl }),
         { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
       )
     }
+
+    return new Response(JSON.stringify({ error: "Invalid Action" }), { status: 400 })
+
   } catch (error) {
+    console.error("🔥 Server Error:", error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
