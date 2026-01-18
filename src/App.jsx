@@ -28,6 +28,9 @@ import PricingPage from './pages/PricingPage';
 import SecurityManager from './pages/admin/components/SecurityManager';
 import ExpirationBanner from './components/ExpirationBanner';
 
+// ▼▼▼ PAYMENT SUCCESS PAGE (ADDED) ▼▼▼
+import PaymentSuccess from './pages/PaymentSuccess';
+
 // ▼▼▼ COMPLIANCE IMPORTS (BOG Requirements) ▼▼▼
 import About from './pages/About';
 import Legal from './pages/Legal';
@@ -216,7 +219,7 @@ function Dashboard() {
 
           </main>
 
-          {/* ▼▼▼ COMPLIANCE FOOTER ADDED HERE ▼▼▼ */}
+          {/* ▼▼▼ COMPLIANCE FOOTER ▼▼▼ */}
           <Footer />
         </>
       )}
@@ -241,7 +244,10 @@ export default function App() {
                 <Route path="/about" element={<About />} />
                 <Route path="/legal" element={<Legal />} />
 
-                {/* ▼▼▼ FIXED: PRICING WITH WRAPPER ▼▼▼ */}
+                {/* ▼▼▼ PAYMENT SUCCESS ROUTE (ADDED) ▼▼▼ */}
+                <Route path="/payment/success" element={<PaymentSuccess />} />
+
+                {/* ▼▼▼ PRICING WITH WRAPPER ▼▼▼ */}
                 <Route path="/pricing" element={
                     <>
                         <PricingNavbarWrapper /> 
@@ -253,7 +259,7 @@ export default function App() {
                 <Route path="/admin" element={<AdminLogin />} />
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 
-                {/* ▼▼▼ ADDED: SECURITY MANAGER ROUTE ▼▼▼ */}
+                {/* SECURITY MANAGER ROUTE */}
                 <Route path="/admin/security" element={<SecurityManager />} />
                 
                 {/* PROTECTED GRIMOIRE ROUTE */}
