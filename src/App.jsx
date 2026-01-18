@@ -36,6 +36,9 @@ import About from './pages/About';
 import Legal from './pages/Legal';
 import Footer from './components/Footer';
 
+// ▼▼▼ SUPABASE CLIENT IMPORT (REQUIRED FOR ROLE UPDATE) ▼▼▼
+import { supabase } from './supabaseClient'; // Ensure this file exists in your src folder
+
 const translations = {
   en: {
     magicalTitle: "The Grimoire Awaits",
@@ -93,6 +96,7 @@ const GrimoireRoute = () => {
 function Dashboard() {
   const { theme, language } = useTheme();
   const { user, signOut } = useAuth();
+  const { addToast } = useToast(); // Use toast for notifications
   const isMagical = theme === 'magical';
   const t = translations[language];
 
@@ -112,6 +116,56 @@ function Dashboard() {
 
   const [activeSection, setActiveSection] = useState(getInitialSection());
 
+  // ---------------------------------------------------------
+  // 1. PAYMENT SUCCESS LOGIC (THE NEW PART)
+  // ---------------------------------------------------------
+  useEffect(() => {
+    const checkPayment = async () => {
+      const paymentStatus = searchParams.get('payment');
+
+      if (paymentStatus === 'success' && user) {
+        // Prevent running this multiple times
+        if (localStorage.getItem('payment_processed') === 'true') return;
+
+        addToast("Payment Verified! Upgrading your account...", "info");
+        localStorage.setItem('payment_processed', 'true');
+
+        // UPDATE THE USER ROLE IN SUPABASE
+        // Note: Changing role to 'magus' so they can access Grimoire
+        const { error } = await supabase
+          .from('profiles') 
+          .update({ role: 'magus' }) 
+          .eq('id', user.id);
+
+        if (error) {
+          console.error('Error updating role:', error);
+          addToast("Database Error: " + error.message, "error");
+          localStorage.removeItem('payment_processed'); // Allow retry
+        } else {
+          addToast("🎉 Success! You are now a Magus.", "success");
+          
+          // Clean the URL (remove ?payment=success)
+          const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.replaceState({}, document.title, newUrl);
+
+          // Reload page after 1.5s to ensure GameContext updates the tier
+          setTimeout(() => {
+             localStorage.removeItem('payment_processed');
+             window.location.reload(); 
+          }, 1500);
+        }
+      } 
+      else if (paymentStatus === 'fail') {
+        addToast("Payment failed or was cancelled.", "error");
+      }
+    };
+
+    checkPayment();
+  }, [searchParams, user, addToast]);
+
+  // ---------------------------------------------------------
+  // 2. EXISTING NAVIGATION LOGIC
+  // ---------------------------------------------------------
   useEffect(() => {
     const sectionParam = searchParams.get('section');
     const inscriptionId = searchParams.get('inscription');
