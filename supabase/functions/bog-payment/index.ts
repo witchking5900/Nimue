@@ -1,19 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-// ▼▼▼ YOUR TEST KEYS ▼▼▼
+// ▼▼▼ KEYS FROM YOUR SCREENSHOT ▼▼▼
 const CLIENT_ID = '10000067'
 const CLIENT_SECRET = 'In5caljru5lc'
-
-// ⚠️ CRITICAL: Test Keys ONLY work on the DEV URL
-const BOG_AUTH_URL = 'https://dev.ipay.ge/opay/api/v1/oauth2/token'
-const BOG_ORDER_URL = 'https://dev.ipay.ge/opay/api/v1/checkout/orders'
-
 const CALLBACK_URL = 'https://eqrodswdgbdkpjwfnefb.supabase.co/payment/success' 
 
-console.log("🚀 BOG Function Started (TEST MODE)")
+console.log("🚀 BOG UNIVERSAL LOADER - VERSION 777") 
 
 serve(async (req) => {
   try {
+    // CORS Headers
     if (req.method === 'OPTIONS') {
       return new Response('ok', { 
         headers: {
@@ -26,32 +22,69 @@ serve(async (req) => {
     const { action, amount } = await req.json()
 
     if (action === 'create_order') {
-      console.log(`💳 Creating Order: ${amount} GEL`)
-
-      // 1. Get Token
-      const authString = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)
-      const tokenResponse = await fetch(BOG_AUTH_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${authString}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: 'grant_type=client_credentials'
-      })
-
-      const tokenData = await tokenResponse.json()
+      console.log(`💳 Processing Order: ${amount} GEL`)
       
-      if (!tokenResponse.ok) {
-        return new Response(
-          JSON.stringify({ error: "Bank Auth Failed", details: tokenData }),
-          { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-        )
+      const authString = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)
+      let accessToken = null
+      let usedUrl = ''
+
+      // ---------------------------------------------------------
+      // ATTEMPT 1: TRY THE DEV SERVER (dev.ipay.ge)
+      // ---------------------------------------------------------
+      console.log("🔸 Attempt 1: Trying DEV Server...")
+      try {
+        const devToken = await fetch('https://dev.ipay.ge/opay/api/v1/oauth2/token', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${authString}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: 'grant_type=client_credentials'
+        })
+        const devData = await devToken.json()
+        if (devToken.ok && devData.access_token) {
+            accessToken = devData.access_token
+            usedUrl = 'https://dev.ipay.ge/opay/api/v1/checkout/orders'
+            console.log("✅ SUCCESS on DEV Server!")
+        }
+      } catch (e) { console.log("Dev Server failed or unreachable") }
+
+      // ---------------------------------------------------------
+      // ATTEMPT 2: TRY THE PROD SERVER (ipay.ge)
+      // ---------------------------------------------------------
+      if (!accessToken) {
+        console.log("🔸 Attempt 2: Trying PROD Server...")
+        try {
+            const prodToken = await fetch('https://ipay.ge/opay/api/v1/oauth2/token', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${authString}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'grant_type=client_credentials'
+            })
+            const prodData = await prodToken.json()
+            if (prodToken.ok && prodData.access_token) {
+                accessToken = prodData.access_token
+                usedUrl = 'https://ipay.ge/opay/api/v1/checkout/orders'
+                console.log("✅ SUCCESS on PROD Server!")
+            } else {
+                // If both fail, return the error from PROD
+                console.error("❌ PROD Auth also failed:", prodData)
+                return new Response(
+                    JSON.stringify({ error: "Auth Failed on ALL servers. Check Keys.", details: prodData }),
+                    { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+                )
+            }
+        } catch (e) { console.log("Prod Server failed") }
       }
 
-      const accessToken = tokenData.access_token
+      if (!accessToken) throw new Error("Could not connect to Bank API")
 
-      // 2. Create Order
-      const orderResponse = await fetch(BOG_ORDER_URL, {
+      // ---------------------------------------------------------
+      // STEP 3: CREATE ORDER (Using the working URL)
+      // ---------------------------------------------------------
+      const orderResponse = await fetch(usedUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
