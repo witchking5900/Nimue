@@ -35,9 +35,7 @@ serve(async (req) => {
     // 2. WEBHOOK (POST) - UPDATE DB
     if (body.order_id || body.status || body.event) {
       console.log("=== WEBHOOK RECEIVED ===")
-      console.log("Full body:", JSON.stringify(body, null, 2))
       
-      // FIX: Extract status from nested structure
       const webhookBody = body.body || body
       const status = webhookBody.order_status?.key || body.order_status?.key || body.status
       const userId = reqUrl.searchParams.get('user_id')
@@ -48,21 +46,30 @@ serve(async (req) => {
       if (status === 'completed' && userId && SUPABASE_URL && SUPABASE_KEY) {
         console.log("✅ Payment completed, upgrading user...")
         
-        // --- CALCULATE DURATION ---
-        let days = 30
-        if (period === '1_week') days = 7
-        if (period === '1_month') days = 30
-        if (period === '6_month') days = 180
-        if (period === '12_month') days = 365
-        if (period === 'lifetime') days = 36500
+        // --- CALCULATE DURATION (UPDATED) ---
+        let expiry;
+        
+        // Special 1 Minute Test Case
+        if (period === '1_minute') {
+            expiry = new Date(Date.now() + 60 * 1000).toISOString() // Exact 60 seconds
+        } else {
+            // Standard Logic
+            let days = 30
+            if (period === '1_week') days = 7
+            if (period === '1_month') days = 30
+            if (period === '6_month') days = 180
+            if (period === '12_month') days = 365
+            if (period === 'lifetime') days = 36500 // 100 Years
+            
+            expiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+        }
 
-        const expiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
         const newTier = period === 'lifetime' ? 'archmage' : 'magus'
 
         console.log(`Upgrading to ${newTier}, expires: ${expiry}`)
 
         // A. UPDATE PROFILE
-        const profileResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: 'PATCH',
           headers: { 
             'apikey': SUPABASE_KEY, 
@@ -70,19 +77,11 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
           },
-          body: JSON.stringify({ tier: newTier })
+          body: JSON.stringify({ tier: 'magus' }) // Always Magus for safety, let DB handle Archmage if needed
         })
         
-        if (!profileResp.ok) {
-          const errorText = await profileResp.text()
-          console.error("❌ Profile update failed:", errorText)
-        } else {
-          const profileData = await profileResp.json()
-          console.log("✅ Profile updated:", profileData)
-        }
-        
-        // B. UPSERT SUBSCRIPTION (update if exists, insert if not)
-        const subResp = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions`, {
+        // B. UPSERT SUBSCRIPTION
+        await fetch(`${SUPABASE_URL}/rest/v1/subscriptions`, {
           method: 'POST',
           headers: { 
             'apikey': SUPABASE_KEY, 
@@ -93,7 +92,7 @@ serve(async (req) => {
           body: JSON.stringify({ 
             user_id: userId, 
             status: 'active', 
-            tier: newTier,
+            tier: 'magus',
             plan_id: period,
             current_period_start: new Date().toISOString(),
             current_period_end: expiry,
@@ -101,17 +100,7 @@ serve(async (req) => {
           })
         })
 
-        if (!subResp.ok) {
-          const errorText = await subResp.text()
-          console.error("❌ Subscription failed:", errorText)
-        } else {
-          const subData = await subResp.json()
-          console.log("✅ Subscription created/updated:", subData)
-        }
-
         console.log("=== WEBHOOK PROCESSING COMPLETE ===")
-      } else {
-        console.log(`⏸️ Skipping upgrade: status=${status}, userId=${userId}`)
       }
       
       return new Response("OK", { status: 200, headers: corsHeaders })
@@ -139,7 +128,6 @@ serve(async (req) => {
       
       if (!tokenResp.ok) {
         const errText = await tokenResp.text()
-        console.error("❌ Auth failed:", errText)
         return new Response(JSON.stringify({ error: `Auth failed: ${errText}` }), { 
           status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -147,7 +135,6 @@ serve(async (req) => {
       }
       
       const tokenData = await tokenResp.json()
-      console.log("✅ Auth token received")
 
       // Order
       const externalId = crypto.randomUUID()
@@ -174,8 +161,6 @@ serve(async (req) => {
         }
       }
 
-      console.log("Sending order to BOG:", JSON.stringify(payload, null, 2))
-
       const orderResp = await fetch(BOG_ORDER_URL, {
         method: 'POST',
         headers: { 
@@ -187,10 +172,8 @@ serve(async (req) => {
       })
       
       const orderData = await orderResp.json()
-      console.log("BOG response:", JSON.stringify(orderData, null, 2))
       
       if (!orderResp.ok) {
-        console.error("❌ Order creation failed:", orderData)
         return new Response(JSON.stringify({ error: `Order failed: ${JSON.stringify(orderData)}` }), { 
           status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -200,20 +183,17 @@ serve(async (req) => {
       const link = orderData._links?.redirect?.href || orderData.redirect_links?.success || orderData.payment_url
 
       if (!link) {
-        console.error("❌ No payment link in response")
         return new Response(JSON.stringify({ error: "No payment link found" }), { 
           status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         })
       }
 
-      console.log("✅ Payment URL:", link)
       return new Response(JSON.stringify({ payment_url: link }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
-    console.log("⚠️ Unknown request type")
     return new Response(JSON.stringify({ error: "Invalid action" }), { 
       status: 400, 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

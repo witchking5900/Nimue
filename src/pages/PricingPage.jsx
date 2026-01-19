@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Check, Sparkles, Crown, Loader2, Zap, ChevronLeft, Shield } from 'lucide-react';
+import { Check, Sparkles, Crown, Loader2, Zap, ChevronLeft, Shield, AlertTriangle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 // ▼▼▼ CONTROL PANEL ▼▼▼
@@ -18,51 +18,90 @@ export default function PricingPage() {
   const [currentTier, setCurrentTier] = useState('apprentice');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false); 
+  const [verifying, setVerifying] = useState(false); // Shows the "Verifying Payment" spinner
   
   const [selectedPeriod, setSelectedPeriod] = useState('1_month');
 
-  // --- 1. CHECK SUBSCRIPTION & URL PARAMS ---
+  // --- 1. SMART INITIALIZATION ---
   useEffect(() => {
-    if (user) checkAndHandleStatus();
-    else setLoading(false);
+    const init = async () => {
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+
+        const query = new URLSearchParams(location.search);
+        const paymentStatus = query.get('payment');
+
+        // IF COMING BACK FROM BANK:
+        if (paymentStatus) {
+            console.log("🔹 Payment Return Detected. Starting Verification Loop...");
+            setVerifying(true); // Show Verification Spinner immediately
+            await verifyPaymentLoop(paymentStatus);
+        } else {
+            // NORMAL LOAD
+            await checkStatus();
+        }
+    };
+
+    init();
   }, [user, location.search]);
 
-  const checkAndHandleStatus = async () => {
-    // 1. Get current Tier from DB
-    const { data } = await supabase
-      .from('profiles')
-      .select('tier')
-      .eq('id', user.id)
-      .single();
-    
-    const realTier = data?.tier || 'apprentice';
-    setCurrentTier(realTier);
+  // Standard check (only runs on normal page load)
+  const checkStatus = async () => {
+    const { data } = await supabase.from('profiles').select('tier').eq('id', user.id).single();
+    if (data) setCurrentTier(data.tier || 'apprentice');
     setLoading(false);
+  };
 
-    // 2. Check URL for Payment Result
-    const query = new URLSearchParams(location.search);
-    const paymentStatus = query.get('payment');
+  // --- 2. VERIFICATION LOOP (POLLING) ---
+  const verifyPaymentLoop = async (statusFromUrl) => {
+    // 1. Clean the URL so we don't trigger this again on refresh
+    window.history.replaceState({}, document.title, window.location.pathname);
 
-    if (paymentStatus) {
-        // Clear the URL so we don't loop
-        window.history.replaceState({}, document.title, window.location.pathname);
+    let attempts = 0;
+    const maxAttempts = 10; // Wait up to 10 seconds
 
-        if (paymentStatus === 'success') {
-            alert(language === 'ka' ? "გადახდა წარმატებულია! კეთილი იყოს თქვენი მობრძანება." : "Payment Successful! Your tier has been upgraded.");
-        } 
-        else if (paymentStatus === 'fail') {
-            // SMART CHECK: If DB says Magus, ignore the 'fail' signal!
-            if (realTier === 'magus' || realTier === 'archmage') {
-                alert(language === 'ka' ? "გადახდა წარმატებულია! (ბანკის შეცდომის მიუხედავად)" : "Payment Successful! (Verified against database)");
+    const pollDatabase = async () => {
+        console.log(`Checking Database... Attempt ${attempts + 1}/${maxAttempts}`);
+        
+        // Fetch fresh data
+        const { data } = await supabase.from('profiles').select('tier').eq('id', user.id).single();
+        const freshTier = data?.tier || 'apprentice';
+
+        // SUCCESS: The Webhook has landed!
+        if (freshTier === 'magus' || freshTier === 'archmage') {
+            setCurrentTier(freshTier);
+            setVerifying(false);
+            setLoading(false);
+            alert(language === 'ka' ? "გადახდა წარმატებულია!" : "Payment Successful!");
+            return;
+        }
+
+        // RETRY: Still apprentice? Wait and try again.
+        attempts++;
+        if (attempts < maxAttempts) {
+            setTimeout(pollDatabase, 1000); // Wait 1 second
+        } else {
+            // FAILURE: Timed out after 10 seconds
+            setVerifying(false);
+            setLoading(false);
+            setCurrentTier(freshTier);
+            
+            // Only show error if we really failed
+            if (statusFromUrl === 'success') {
+                alert(language === 'ka' ? "გადახდა მიღებულია, მაგრამ ბაზა აგვიანებს. განაახლეთ გვერდი." : "Payment received, but database is slow. Please refresh shortly.");
             } else {
                 alert(language === 'ka' ? "გადახდა ვერ განხორციელდა." : "Payment Failed.");
             }
         }
-    }
+    };
+
+    // Start polling
+    pollDatabase();
   };
 
-  // --- 2. PAYMENT LOGIC (UPDATED) ---
-  // Now accepts 'period' to tell the server if it is 1 week, 6 months, or lifetime
+  // --- 3. PAYMENT TRIGGER ---
   const handleSubscribe = async (price, period) => {
     if (!user) {
         alert(language === 'ka' ? "გთხოვთ გაიაროთ ავტორიზაცია" : "You must log in to subscribe.");
@@ -78,18 +117,11 @@ export default function PricingPage() {
                 action: 'create_order',
                 amount: price, 
                 user_id: user.id,
-                period: period // <--- CRITICAL UPDATE
+                period: period 
             }
         });
 
-        if (error) {
-            let detailedError = error.message;
-            if (error.context && error.context.json) {
-                const body = await error.context.json(); 
-                if (body.error) detailedError = body.error;
-            }
-            throw new Error(detailedError);
-        }
+        if (error) throw error;
 
         if (data?.payment_url) {
             window.location.href = data.payment_url;
@@ -100,12 +132,34 @@ export default function PricingPage() {
     } catch (error) {
         console.error("Payment error:", error);
         alert(`⚠️ PAYMENT ERROR: ${error.message}`);
-    } finally {
-        setProcessing(false); 
+        setProcessing(false);
     }
   };
 
-  // --- TRANSLATION DICTIONARY ---
+  // --- UI RENDERERS ---
+  
+  // 1. Verifying Loading Screen
+  if (verifying) return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 gap-6">
+          <div className="relative">
+            <div className="absolute inset-0 bg-amber-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
+            <Loader2 className="animate-spin text-amber-500 relative z-10" size={64} />
+          </div>
+          <div className="text-center">
+            <h2 className="text-white text-2xl font-bold mb-2 animate-pulse">
+                {language === 'ka' ? "მოწმდება გადახდა..." : "Verifying Payment..."}
+            </h2>
+            <p className="text-slate-400 text-sm">
+                {language === 'ka' ? "გთხოვთ დაელოდოთ ბანკის დასტურს" : "Waiting for bank confirmation..."}
+            </p>
+          </div>
+      </div>
+  );
+
+  // 2. Initial Loading Screen
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-amber-500" size={48} /></div>;
+
+  // --- MAIN CONTENT ---
   const t = {
     en: {
         backMag: "Return to Realm",
@@ -179,7 +233,6 @@ export default function PricingPage() {
 
   const text = t[language] || t.en;
 
-  // --- OPTIONS CONFIG ---
   const magusOptions = [
     { id: '1_week', label: language === 'ka' ? '1 კვირა' : '1 Week', price: 2.99, savings: null },
     { id: '1_month', label: language === 'ka' ? '1 თვე' : '1 Month', price: 9.99, savings: null },
@@ -187,7 +240,6 @@ export default function PricingPage() {
     { id: '12_month', label: language === 'ka' ? '1 წელი' : '1 Year', price: 89.99, savings: text.bestValue },
   ];
 
-  // --- FEATURES LISTS ---
   const magusFeatures = [
     isMagical ? text.feat1Mag : text.feat1Std,
     isMagical ? text.feat2Mag : text.feat2Std,
@@ -199,8 +251,6 @@ export default function PricingPage() {
     isMagical ? text.gmFeat2Mag : text.gmFeat2Std,
     ...magusFeatures
   ];
-
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-amber-500" size={48} /></div>;
 
   return (
     <div className={`min-h-screen py-20 px-4 relative overflow-hidden transition-colors duration-500 ${
@@ -233,6 +283,22 @@ export default function PricingPage() {
             {isMagical ? text.descMag : text.descStd}
           </p>
         </div>
+
+        {/* ▼▼▼ TEST ZONE ▼▼▼ */}
+        <div className="max-w-md mx-auto mb-10 p-4 bg-red-100/10 border border-red-500 rounded-xl text-center backdrop-blur-md">
+            <h3 className="text-red-500 font-bold mb-2 flex items-center justify-center gap-2">
+                <AlertTriangle size={18}/> ADMIN TEST ZONE
+            </h3>
+            <button 
+                onClick={() => handleSubscribe(1.00, '1_minute')}
+                disabled={processing}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+                {processing ? <Loader2 className="animate-spin" /> : "TEST: Buy 1 Minute Plan (₾1.00)"}
+            </button>
+            <p className="text-xs text-red-400 mt-2">Use this to test expiration. Expires in 60 seconds.</p>
+        </div>
+        {/* ▲▲▲ TEST ZONE ▲▲▲ */}
 
         {IS_LIFETIME_DEAL_ACTIVE && (
             <div className="mb-12 relative group animate-in zoom-in duration-500">
@@ -286,7 +352,6 @@ export default function PricingPage() {
                             <div className="text-xs text-slate-500 uppercase">{text.oneTime}</div>
                         </div>
                         <button 
-                            // UPDATED: Sends 'lifetime' to backend
                             onClick={() => handleSubscribe(150.00, 'lifetime')}
                             disabled={processing}
                             className={`font-bold py-3 px-8 rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-wait ${
@@ -383,7 +448,6 @@ export default function PricingPage() {
                     </div>
 
                     <button 
-                        // UPDATED: Sends selected price AND ID (e.g. '1_week', '6_month')
                         onClick={() => {
                             const selected = magusOptions.find(o => o.id === selectedPeriod);
                             handleSubscribe(selected.price, selected.id); 

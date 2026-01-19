@@ -32,7 +32,7 @@ export default function ProfileView() {
   // --- SUBSCRIPTION STATE ---
   const [subscription, setSubscription] = useState(null);
   const [loadingSub, setLoadingSub] = useState(true);
-  const [subCountdown, setSubCountdown] = useState(null); // Initialize as null
+  const [subCountdown, setSubCountdown] = useState(null);
 
   // --- EDIT MODAL STATE ---
   const [showEditModal, setShowEditModal] = useState(false);
@@ -62,16 +62,27 @@ export default function ProfileView() {
         if (deviceData) setDevices(deviceData);
 
         // 2. Load Subscription (Billing Info)
-        const { data: subData } = await supabase
+        // UPDATED: Fetches the LATEST subscription regardless of status
+        const { data: subData, error } = await supabase
             .from('subscriptions')
             .select('*')
             .eq('user_id', user.id)
-            .in('status', ['active', 'cancelled']) 
-            .order('current_period_end', { ascending: false })
+            .order('created_at', { ascending: false }) // Get the newest one created
             .limit(1)
             .maybeSingle();
 
-        if (subData) setSubscription(subData);
+        if (error) {
+            console.error("Sub Fetch Error:", error);
+        }
+
+        if (subData) {
+            // Check if it's actually expired locally to update UI status if needed
+            const isExpired = new Date(subData.current_period_end) < new Date();
+            if (isExpired && subData.status === 'active') {
+                subData.status = 'expired'; // Visual override
+            }
+            setSubscription(subData);
+        }
         setLoadingSub(false);
     };
     loadData();
@@ -113,7 +124,7 @@ export default function ProfileView() {
           const diff = target - now;
 
           if (diff <= 0) {
-              setSubCountdown(null); // ▼▼▼ FIXED: Hide timer immediately when 0
+              setSubCountdown(null);
               return;
           }
 
@@ -267,6 +278,18 @@ export default function ProfileView() {
   const canAffordHeal = xp >= HEAL_COST;
   const missingXp = HEAL_COST - xp;
 
+  // Helper to format plan name from ID
+  const getPlanName = (planId) => {
+    if(!planId) return language === 'ka' ? "ჯადოქარი" : "Magus";
+    if(planId === 'lifetime') return language === 'ka' ? "სამუდამო წვდომა" : "Lifetime Access";
+    if(planId === '1_minute') return "Test: 1 Minute";
+    if(planId === '1_week') return language === 'ka' ? "1 კვირა" : "1 Week";
+    if(planId === '1_month') return language === 'ka' ? "1 თვე" : "1 Month";
+    if(planId === '6_month') return language === 'ka' ? "6 თვე" : "6 Months";
+    if(planId === '12_month') return language === 'ka' ? "1 წელი" : "1 Year";
+    return planId;
+  };
+
   return (
     <div className="max-w-2xl mx-auto p-6 animate-in fade-in zoom-in duration-300">
       
@@ -351,8 +374,8 @@ export default function ProfileView() {
          <div className="flex items-center justify-between mb-4">
              <h3 className="text-sm uppercase tracking-wider font-bold opacity-60 flex items-center gap-2"><CreditCard size={14}/> {text.billTitle}</h3>
              {subscription && (
-                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${subscription.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-orange-500/20 text-orange-500'}`}>
-                    {subscription.status === 'active' ? 'Active' : 'Cancelling'}
+                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${subscription.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                    {subscription.status}
                  </span>
              )}
          </div>
@@ -368,7 +391,8 @@ export default function ProfileView() {
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                  <div>
                     <div className="text-xl font-bold flex items-center gap-2">
-                        {subscription.plan_type === 'grand_magus' ? (language==='ka'?"დიდი ჯადოქარი":"Grand Magus") : (language==='ka'?"ჯადოქარი":"Magus")}
+                        {/* UPDATED: Uses plan_id instead of plan_type */}
+                        {getPlanName(subscription.plan_id)}
                     </div>
                     {/* EXPIRY & COUNTDOWN */}
                     <div className="text-xs opacity-70 flex flex-col gap-1 mt-1">
@@ -379,7 +403,6 @@ export default function ProfileView() {
                                 {new Date(subscription.current_period_end).toLocaleString()}
                             </span>
                         </div>
-                        {/* ▼▼▼ FIXED: Hides if subCountdown is null ▼▼▼ */}
                         {subCountdown && (
                             <div className="flex items-center gap-1 text-amber-500 font-mono font-bold">
                                 <Clock size={12} /> {subCountdown} left
