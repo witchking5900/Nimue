@@ -7,8 +7,9 @@ import { GameProvider, useGameLogic } from './context/GameContext';
 // --- CRITICAL RESTORATION ---
 import { ToastProvider, useToast } from './context/ToastContext';
 
-// --- SECURITY SHIELD ---
+// --- SECURITY & UTILS ---
 import SecurityOverlay from './components/SecurityOverlay';
+import SubscriptionManager from './components/SubscriptionManager'; 
 
 import Navbar from './components/Navbar';
 import WelcomeModal from './components/WelcomeModal';
@@ -28,6 +29,7 @@ import PricingPage from './pages/PricingPage';
 import SecurityManager from './pages/admin/components/SecurityManager';
 import ExpirationBanner from './components/ExpirationBanner';
 import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentFailure from './pages/PaymentFailure'; // <--- NEW IMPORT
 import About from './pages/About';
 import Legal from './pages/Legal';
 import Footer from './components/Footer';
@@ -78,8 +80,6 @@ const GrimoireRoute = () => {
 
     useEffect(() => {
         if (!hasAccess) {
-            // Optional: Don't spam toast if redirecting on load
-            // addToast("Only Magus rank can enter.", "error"); 
             navigate('/'); 
         }
     }, [hasAccess, navigate, addToast]);
@@ -111,7 +111,7 @@ function Dashboard() {
   const [activeSection, setActiveSection] = useState(getInitialSection());
 
   // ---------------------------------------------------------
-  // 1. PAYMENT SUCCESS LOGIC (RPC MODE - BULLETPROOF)
+  // 1. PAYMENT LOGIC (LEGACY / FALLBACK)
   // ---------------------------------------------------------
   useEffect(() => {
     const checkPayment = async () => {
@@ -123,8 +123,6 @@ function Dashboard() {
 
         addToast("Payment Verified! Unlocking Magus Tier...", "info");
         
-        // ▼▼▼ THE FIX: USE THE ADMIN FUNCTION ▼▼▼
-        // This bypasses all RLS permissions and forces the update.
         const { error } = await supabase.rpc('upgrade_to_magus');
 
         if (error) {
@@ -134,11 +132,9 @@ function Dashboard() {
           localStorage.setItem('payment_processed', 'true');
           addToast("🎉 You are now a Magus!", "success");
           
-          // Clean URL
           const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
           window.history.replaceState({}, document.title, newUrl);
 
-          // Force Reload to ensure GameContext fetches new tier
           setTimeout(() => {
              localStorage.removeItem('payment_processed');
              window.location.reload(); 
@@ -275,12 +271,19 @@ export default function App() {
         <ToastProvider>
           <GameProvider>
             <SecurityOverlay>
+              {/* ▼▼▼ AUTO-DOWNGRADER ▼▼▼ */}
+              <SubscriptionManager /> 
+              
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/community" element={<Dashboard />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/legal" element={<Legal />} />
-                <Route path="/payment/success" element={<PaymentSuccess />} />
+
+                {/* ▼▼▼ NEW PAYMENT ROUTES ▼▼▼ */}
+                <Route path="/payment-success" element={<PaymentSuccess />} />
+                <Route path="/payment-fail" element={<PaymentFailure />} />
+
                 <Route path="/pricing" element={
                     <>
                         <PricingNavbarWrapper /> 

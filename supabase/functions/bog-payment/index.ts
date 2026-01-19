@@ -19,10 +19,21 @@ serve(async (req) => {
 
   const reqUrl = new URL(req.url)
 
-  // 1. GET REDIRECT
+  // 1. GET REDIRECT (UPDATED WITH DEBUGGER LOGIC)
   if (req.method === 'GET') {
-    const outcome = reqUrl.searchParams.get('outcome')
-    const target = `${FRONTEND_URL}?payment=${outcome === 'success' || outcome === 'win' ? 'success' : 'fail'}`
+    // Grab the outcome (e.g., 'fail', 'completed') and order_id from the Bank's URL
+    const outcome = reqUrl.searchParams.get('outcome') || 'unknown';
+    const order_id = reqUrl.searchParams.get('order_id') || '';
+    
+    // Check if the outcome is in our "Good List"
+    const isSuccess = ['success', 'win', 'completed', 'approved'].includes(outcome.toLowerCase());
+    
+    // ▼▼▼ THE DEBUGGER FIX ▼▼▼
+    // Pass the 'reason' and 'order_id' to the frontend pages
+    const target = isSuccess 
+      ? `${FRONTEND_URL}/payment-success?order_id=${order_id}` 
+      : `${FRONTEND_URL}/payment-fail?reason=${outcome}&order_id=${order_id}`;
+    
     return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': target } })
   }
 
@@ -46,29 +57,28 @@ serve(async (req) => {
       if (status === 'completed' && userId && SUPABASE_URL && SUPABASE_KEY) {
         console.log("✅ Payment completed, upgrading user...")
         
-        // --- CALCULATE DURATION (UPDATED) ---
-        let expiry;
+        // --- CALCULATE DURATION ---
+        let expiry = null; 
         
-        // Special 1 Minute Test Case
-        if (period === '1_minute') {
-            expiry = new Date(Date.now() + 60 * 1000).toISOString() // Exact 60 seconds
-        } else {
-            // Standard Logic
-            let days = 30
-            if (period === '1_week') days = 7
-            if (period === '1_month') days = 30
-            if (period === '6_month') days = 180
-            if (period === '12_month') days = 365
-            if (period === 'lifetime') days = 36500 // 100 Years
-            
-            expiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+        if (period !== 'lifetime') {
+            if (period === '1_minute') {
+                expiry = new Date(Date.now() + 60 * 1000).toISOString(); 
+            } else {
+                let days = 30;
+                if (period === '1_week') days = 7;
+                if (period === '1_month') days = 30;
+                if (period === '6_month') days = 180;
+                if (period === '12_month') days = 365;
+                
+                expiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+            }
         }
 
-        const newTier = period === 'lifetime' ? 'archmage' : 'magus'
+        const newTier = period === 'lifetime' ? 'grand_magus' : 'magus';
 
-        console.log(`Upgrading to ${newTier}, expires: ${expiry}`)
+        console.log(`Upgrading to ${newTier}, expires: ${expiry ? expiry : 'NEVER (Lifetime)'}`)
 
-        // A. UPDATE PROFILE
+        // A. UPDATE PROFILE 
         await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: 'PATCH',
           headers: { 
@@ -77,7 +87,11 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
           },
-          body: JSON.stringify({ tier: 'magus' }) // Always Magus for safety, let DB handle Archmage if needed
+          body: JSON.stringify({ 
+              tier: newTier,
+              is_subscribed: true,        
+              subscription_end: expiry    
+          }) 
         })
         
         // B. UPSERT SUBSCRIPTION
@@ -92,10 +106,10 @@ serve(async (req) => {
           body: JSON.stringify({ 
             user_id: userId, 
             status: 'active', 
-            tier: 'magus',
+            tier: newTier,
             plan_id: period,
             current_period_start: new Date().toISOString(),
-            current_period_end: expiry,
+            current_period_end: expiry, 
             updated_at: new Date().toISOString()
           })
         })
@@ -113,10 +127,7 @@ serve(async (req) => {
       const userId = body.user_id || 'unknown'
       const period = body.period || '1_month'
 
-      console.log(`Amount: ${amount} GEL, User: ${userId}, Period: ${period}`)
-
-      // Auth
-      const authString = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)
+      const authString = btoa(unescape(encodeURIComponent(`${CLIENT_ID}:${CLIENT_SECRET}`)))
       const tokenResp = await fetch(BOG_AUTH_URL, {
         method: 'POST',
         headers: { 
@@ -136,7 +147,6 @@ serve(async (req) => {
       
       const tokenData = await tokenResp.json()
 
-      // Order
       const externalId = crypto.randomUUID()
       const smartCallbackUrl = `${CALLBACK_URL}?user_id=${userId}&period=${period}`
       

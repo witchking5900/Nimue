@@ -16,17 +16,24 @@ export function GameProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   
-  // NEW: Tracks if sub is active/expired for the UI Banner
-  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+  // ▼▼▼ THE FIX: LAZY INITIALIZATION ▼▼▼
+  // We check storage IMMEDIATELY. This guarantees 'expired' is set before the first render.
+  const [subscriptionStatus, setSubscriptionStatus] = useState(() => {
+      if (typeof window !== 'undefined' && sessionStorage.getItem('nimue_force_expiration') === 'true') {
+          console.log("🔔 Forced Expiration Banner Triggered (Instant)");
+          sessionStorage.removeItem('nimue_force_expiration'); // Clean up immediately
+          return 'expired';
+      }
+      return null;
+  });
 
   // Ref to hold the downgrade timer so we can clear it if needed
   const downgradeTimerRef = useRef(null);
 
   // --- TIER HELPERS ---
-  const isInfinite = ['archmage', 'insubstantial'].includes(tier); // Infinite Hearts
-  const isArchmage = tier === 'archmage'; // Admin Powers
+  const isInfinite = ['archmage', 'insubstantial'].includes(tier); 
+  const isArchmage = tier === 'archmage'; 
   
-  // Permanent Access for High Tiers (No Renting Needed)
   const hasPermanentAccess = ['archmage', 'insubstantial', 'grand_magus', 'magus'].includes(tier);
 
   const getMaxHearts = (currentTier) => {
@@ -93,22 +100,21 @@ export function GameProvider({ children }) {
                   await performDowngrade(sub.id);
                   finalTier = 'apprentice';
                   setSubscriptionStatus('expired'); // Banner shows immediately
-                  // Alert removed in favor of banner
               } 
               // CASE 2: TIME REMAINING -> SET TIME BOMB
               else {
                   console.log(`⏳ Subscription valid. Auto-downgrade set in ${Math.floor(timeRemaining/1000)} seconds.`);
-                  setSubscriptionStatus('active'); // Status is good
+                  
+                  // Only set 'active' if we are NOT already showing the expired banner from the reload
+                  setSubscriptionStatus(prev => prev === 'expired' ? 'expired' : 'active');
 
-                  // Clear any existing timer just in case
                   if (downgradeTimerRef.current) clearTimeout(downgradeTimerRef.current);
 
-                  // Set new timer
                   downgradeTimerRef.current = setTimeout(async () => {
                       console.log("⏰ TIME IS UP! Performing live downgrade...");
                       await performDowngrade(sub.id);
                       setTier('apprentice'); 
-                      setSubscriptionStatus('expired'); // <--- TRIGGER BANNER LIVE
+                      setSubscriptionStatus('expired'); 
                   }, timeRemaining);
               }
           }
@@ -170,7 +176,6 @@ export function GameProvider({ children }) {
 
     fetchProfileData();
 
-    // Cleanup timer on unmount or user change
     return () => {
         if (downgradeTimerRef.current) clearTimeout(downgradeTimerRef.current);
     };

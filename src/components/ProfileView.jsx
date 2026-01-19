@@ -62,12 +62,12 @@ export default function ProfileView() {
         if (deviceData) setDevices(deviceData);
 
         // 2. Load Subscription (Billing Info)
-        // UPDATED: Fetches the LATEST subscription regardless of status
+        // UPDATED: Fetches the LATEST subscription created
         const { data: subData, error } = await supabase
             .from('subscriptions')
             .select('*')
             .eq('user_id', user.id)
-            .order('created_at', { ascending: false }) // Get the newest one created
+            .order('created_at', { ascending: false }) // Get the newest one
             .limit(1)
             .maybeSingle();
 
@@ -76,11 +76,6 @@ export default function ProfileView() {
         }
 
         if (subData) {
-            // Check if it's actually expired locally to update UI status if needed
-            const isExpired = new Date(subData.current_period_end) < new Date();
-            if (isExpired && subData.status === 'active') {
-                subData.status = 'expired'; // Visual override
-            }
             setSubscription(subData);
         }
         setLoadingSub(false);
@@ -116,15 +111,23 @@ export default function ProfileView() {
 
   // --- SUBSCRIPTION COUNTDOWN TIMER ---
   useEffect(() => {
-      if (!subscription || !subscription.current_period_end) return;
+      // 1. If no sub, do nothing
+      if (!subscription) return;
 
+      // 2. If Lifetime (Date is null/empty), set status to Lifetime
+      if (!subscription.current_period_end) {
+          setSubCountdown("LIFETIME");
+          return;
+      }
+
+      // 3. Standard Countdown Logic
       const updateCountdown = () => {
           const now = new Date().getTime();
           const target = new Date(subscription.current_period_end).getTime();
           const diff = target - now;
 
           if (diff <= 0) {
-              setSubCountdown(null);
+              setSubCountdown("EXPIRED");
               return;
           }
 
@@ -400,12 +403,18 @@ export default function ProfileView() {
                             <Calendar size={12}/> 
                             {subscription.status === 'cancelled' ? (language === 'ka' ? "წვდომა სანამ:" : "Access until:") : text.billNext}: 
                             <span className="font-bold text-slate-300 ml-1">
-                                {new Date(subscription.current_period_end).toLocaleString()}
+                                {subscription.current_period_end 
+                                    ? new Date(subscription.current_period_end).toLocaleString() 
+                                    : (language === 'ka' ? "უვადო" : "Never")}
                             </span>
                         </div>
                         {subCountdown && (
-                            <div className="flex items-center gap-1 text-amber-500 font-mono font-bold">
-                                <Clock size={12} /> {subCountdown} left
+                            <div className={`flex items-center gap-1 font-mono font-bold ${subCountdown === 'EXPIRED' ? 'text-red-500' : 'text-amber-500'}`}>
+                                {subCountdown === 'LIFETIME' ? (
+                                    <><InfinityIcon size={14} /> {language === 'ka' ? 'სამუდამო' : 'Lifetime Access'}</>
+                                ) : (
+                                    <><Clock size={12} /> {subCountdown === 'EXPIRED' ? (language === 'ka' ? 'ვადა ამოიწურა' : 'Plan Expired') : `${subCountdown} left`}</>
+                                )}
                             </div>
                         )}
                     </div>
