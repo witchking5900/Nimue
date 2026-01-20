@@ -18,7 +18,9 @@ export default function InscriptionManager() {
     ka: { standardTitle: '', magicalTitle: '', standardContent: '', magicalContent: '' }
   });
 
-  const [rawTestData, setRawTestData] = useState('');
+  // SEPARATE RAW INPUTS
+  const [rawEn, setRawEn] = useState('');
+  const [rawKa, setRawKa] = useState('');
 
   // --- FETCH DATA ---
   const fetchData = async () => {
@@ -26,7 +28,6 @@ export default function InscriptionManager() {
     const { data: cats } = await supabase.from('categories').select('*').order('slug');
     if (cats) setCategories(cats);
 
-    // FIXED: Now pointing to 'inscriptions'
     const { data: insc } = await supabase
       .from('inscriptions') 
       .select('*, categories(title)') 
@@ -41,27 +42,36 @@ export default function InscriptionManager() {
   // --- HELPERS ---
   const safeGet = (obj, lang) => obj?.[lang] || "";
 
-  // Convert JSON back to "Trial of Souls" Syntax for editing
-  const jsonTestToText = (testData) => {
-      if (!testData || !Array.isArray(testData)) return "";
-      return testData.map(block => {
-          let text = `//// ${safeGet(block.question, 'en')} | ${safeGet(block.question, 'ka')}`;
-          
+  // 1. CONVERT DB JSON -> SEPARATE TEXT FIELDS
+  const jsonToDualText = (testData) => {
+      if (!testData || !Array.isArray(testData)) return { en: "", ka: "" };
+      
+      let enText = "";
+      let kaText = "";
+
+      testData.forEach((block, index) => {
+          // Add spacing if not first block
+          if (index > 0) { enText += "\n\n"; kaText += "\n\n"; }
+
+          // Questions
+          enText += `//// ${safeGet(block.question, 'en')}`;
+          kaText += `//// ${safeGet(block.question, 'ka')}`;
+
+          // Options
           block.options.forEach(opt => {
               const prefix = opt.id === block.correctId ? "//" : "///";
-              const enText = safeGet(opt.text, 'en');
-              const kaText = safeGet(opt.text, 'ka');
-              const enFeed = safeGet(opt.feedback, 'en');
-              const kaFeed = safeGet(opt.feedback, 'ka');
               
-              text += `\n${prefix} ${enText} | ${kaText}`;
-              
-              if (enFeed || kaFeed) {
-                  text += ` ## ${enFeed} | ${kaFeed}`;
-              }
+              // English Line
+              enText += `\n${prefix} ${safeGet(opt.text, 'en')}`;
+              if (safeGet(opt.feedback, 'en')) enText += ` ## ${safeGet(opt.feedback, 'en')}`;
+
+              // Georgian Line
+              kaText += `\n${prefix} ${safeGet(opt.text, 'ka')}`;
+              if (safeGet(opt.feedback, 'ka')) kaText += ` ## ${safeGet(opt.feedback, 'ka')}`;
           });
-          return text;
-      }).join('\n\n');
+      });
+
+      return { en: enText, ka: kaText };
   };
 
   const handleChange = (lang, field, value) => {
@@ -88,14 +98,19 @@ export default function InscriptionManager() {
               magicalContent: inc.content?.ka?.magical || ''
           }
       });
-      setRawTestData(jsonTestToText(inc.test_data));
+      
+      const { en, ka } = jsonToDualText(inc.test_data);
+      setRawEn(en);
+      setRawKa(ka);
+      
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCancelEdit = () => {
       setEditingId(null);
       setSelectedCat('');
-      setRawTestData('');
+      setRawEn('');
+      setRawKa('');
       setFormData({
         en: { standardTitle: '', magicalTitle: '', standardContent: '', magicalContent: '' },
         ka: { standardTitle: '', magicalTitle: '', standardContent: '', magicalContent: '' }
@@ -104,7 +119,6 @@ export default function InscriptionManager() {
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this inscription?")) return;
-    // FIXED: Pointing to 'inscriptions'
     const { error } = await supabase.from('inscriptions').delete().eq('id', id);
     if (!error) {
         setDbInscriptions(prev => prev.filter(i => i.id !== id));
@@ -112,28 +126,21 @@ export default function InscriptionManager() {
     }
   };
 
-  // --- PARSER ---
-  const parseTrialSyntax = (text) => {
-    if (!text.trim()) return null;
+  // 2. PARSE SINGLE TEXT BLOCK (Reuse your logic)
+  const parseSingleLang = (text) => {
+    if (!text.trim()) return [];
     
-    const splitLang = (str) => {
-        if (!str) return { en: "", ka: "" };
-        const parts = str.split('|');
-        return {
-            en: parts[0]?.trim() || "",
-            ka: parts[1]?.trim() || parts[0]?.trim() || "" 
-        };
-    };
-
     const blocks = text.split('////').filter(b => b.trim().length > 0);
     
     return blocks.map(block => {
       const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const questionObj = splitLang(lines[0]);
+      const questionText = lines[0]; // First line is question
       
       const options = [];
-      let correctAnswerId = null;
+      let correctIndex = -1; // We track correct index to match IDs later
 
+      // Process options starting from line 1
+      let optCounter = 0;
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
         let rawContent = "";
@@ -150,30 +157,61 @@ export default function InscriptionManager() {
         }
 
         const feedbackSplit = rawContent.split('##');
-        const answerPart = feedbackSplit[0];
-        const feedbackPart = feedbackSplit[1] || "";
+        const answerText = feedbackSplit[0]?.trim() || "";
+        const feedbackText = feedbackSplit[1]?.trim() || "";
 
-        const answerObj = splitLang(answerPart);
-        const feedbackObj = splitLang(feedbackPart);
+        if (isCorrect) correctIndex = optCounter;
 
-        const optId = `opt_${crypto.randomUUID().slice(0,4)}`;
-        
-        options.push({
-            id: optId,
-            text: answerObj,      
-            feedback: feedbackObj 
-        });
-
-        if (isCorrect) correctAnswerId = optId;
+        options.push({ text: answerText, feedback: feedbackText });
+        optCounter++;
       }
 
-      return { 
-          id: crypto.randomUUID(), 
-          question: questionObj, 
-          options: options, 
-          correctId: correctAnswerId 
-      };
+      return { question: questionText, options, correctIndex };
     });
+  };
+
+  // 3. MERGE EN AND KA PARSED DATA
+  const mergeLanguages = (enData, kaData) => {
+      const merged = [];
+      const count = Math.max(enData.length, kaData.length);
+
+      for (let i = 0; i < count; i++) {
+          const enBlock = enData[i] || { question: "", options: [], correctIndex: -1 };
+          const kaBlock = kaData[i] || { question: "", options: [], correctIndex: -1 };
+
+          const blockId = crypto.randomUUID();
+          const mergedOptions = [];
+          let correctId = null;
+
+          // Merge Options (assuming same order)
+          const optCount = Math.max(enBlock.options.length, kaBlock.options.length);
+          
+          for (let j = 0; j < optCount; j++) {
+              const enOpt = enBlock.options[j] || { text: "", feedback: "" };
+              const kaOpt = kaBlock.options[j] || { text: "", feedback: "" };
+              
+              const optId = `opt_${crypto.randomUUID().slice(0,8)}`;
+              
+              mergedOptions.push({
+                  id: optId,
+                  text: { en: enOpt.text, ka: kaOpt.text },
+                  feedback: { en: enOpt.feedback, ka: kaOpt.feedback }
+              });
+
+              // If this index was marked correct in EITHER lang, mark it correct here
+              if (enBlock.correctIndex === j || kaBlock.correctIndex === j) {
+                  correctId = optId;
+              }
+          }
+
+          merged.push({
+              id: blockId,
+              question: { en: enBlock.question, ka: kaBlock.question },
+              options: mergedOptions,
+              correctId: correctId
+          });
+      }
+      return merged;
   };
 
   const handleSubmit = async (e) => {
@@ -201,7 +239,10 @@ export default function InscriptionManager() {
 
     if (!finalCategoryId) { alert("Select a category!"); setLoading(false); return; }
 
-    const parsedTest = parseTrialSyntax(rawTestData);
+    // PARSE AND MERGE
+    const parsedEn = parseSingleLang(rawEn);
+    const parsedKa = parseSingleLang(rawKa);
+    const finalTestData = mergeLanguages(parsedEn, parsedKa);
     
     const payload = {
       category_id: finalCategoryId,
@@ -213,10 +254,9 @@ export default function InscriptionManager() {
         en: { standard: formData.en.standardContent, magical: formData.en.magicalContent },
         ka: { standard: formData.ka.standardContent, magical: formData.ka.magicalContent }
       },
-      test_data: parsedTest 
+      test_data: finalTestData 
     };
 
-    // FIXED: Pointing to 'inscriptions'
     const query = editingId 
         ? supabase.from('inscriptions').update(payload).eq('id', editingId)
         : supabase.from('inscriptions').insert(payload);
@@ -233,7 +273,7 @@ export default function InscriptionManager() {
   };
 
   return (
-    <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl animate-in fade-in max-w-5xl mx-auto">
+    <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl animate-in fade-in max-w-6xl mx-auto">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -299,26 +339,46 @@ export default function InscriptionManager() {
           </div>
         </div>
 
-        {/* TRIAL OF SOULS TEST BUILDER */}
+        {/* TRIAL OF SOULS - SPLIT TEXT AREAS */}
         <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-white flex items-center gap-2">
               <FileText className="text-purple-400" /> Trial of Souls Logic
             </h3>
             <div className="text-[10px] text-slate-400 font-mono bg-slate-950 px-3 py-2 rounded border border-slate-800">
-               //// Question EN | KA <br/>
-               // Correct EN | KA ## Feedback EN | KA <br/>
-               /// Wrong EN | KA ## Feedback EN | KA
+               //// Question<br/>
+               // Correct Option ## Feedback<br/>
+               /// Wrong Option ## Feedback
             </div>
           </div>
-          <textarea 
-            value={rawTestData}
-            onChange={(e) => setRawTestData(e.target.value)}
-            className="w-full h-48 bg-slate-950 border border-slate-800 rounded-lg p-4 text-slate-300 font-mono text-sm focus:border-purple-500 focus:outline-none leading-relaxed"
-            placeholder={`//// What is ATP? | რა არის ATP?
-// Energy Source | ენერგიის წყარო ## Correct! | სწორია!
-/// Genetic Code | გენეტიკური კოდი ## Wrong, that is DNA. | არა, ეგ დნმ-ია.`}
-          />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* ENGLISH SYNTAX */}
+              <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase">🇬🇧 English Syntax</label>
+                  <textarea 
+                    value={rawEn}
+                    onChange={(e) => setRawEn(e.target.value)}
+                    className="w-full h-64 bg-slate-950 border border-slate-800 rounded-lg p-4 text-slate-300 font-mono text-sm focus:border-purple-500 focus:outline-none leading-relaxed"
+                    placeholder={`//// What is ATP?
+// Energy Source ## Correct!
+/// Genetic Code ## Wrong.`}
+                  />
+              </div>
+
+              {/* GEORGIAN SYNTAX */}
+              <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase">🇬🇪 Georgian Syntax</label>
+                  <textarea 
+                    value={rawKa}
+                    onChange={(e) => setRawKa(e.target.value)}
+                    className="w-full h-64 bg-slate-950 border border-slate-800 rounded-lg p-4 text-slate-300 font-mono text-sm focus:border-purple-500 focus:outline-none leading-relaxed"
+                    placeholder={`//// რა არის ATP?
+// ენერგიის წყარო ## სწორია!
+/// გენეტიკური კოდი ## არა.`}
+                  />
+              </div>
+          </div>
         </div>
 
         <div className="flex gap-3">
