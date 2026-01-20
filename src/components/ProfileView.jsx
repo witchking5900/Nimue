@@ -16,10 +16,9 @@ export default function ProfileView() {
   const { theme, language, toggleTheme } = useTheme(); 
   const { addToast } = useToast();
   
-  // We use useGameLogic for shared state, but we also listen locally for instant updates
   const { 
       hearts, maxHearts, xp, tier, isInfiniteHearts, regenTarget, regenSpeed,
-      buyHeartWithXp 
+      buyHeartWithXp
   } = useGameLogic();
   
   const isMagical = theme === 'magical';
@@ -52,13 +51,10 @@ export default function ProfileView() {
   const [contactMessage, setContactMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
 
-  // --- PAYMENT STATE ---
-  const [processingPayment, setProcessingPayment] = useState(false);
-
-  // --- 1. LOAD INITIAL DATA ---
+  // --- LOAD DATA ---
   useEffect(() => {
     const loadData = async () => {
-        // A. Load Devices
+        // 1. Load Devices
         const myId = localStorage.getItem('nimue_device_id');
         setCurrentDeviceId(myId);
         const { data: deviceData } = await supabase
@@ -68,55 +64,23 @@ export default function ProfileView() {
             .order('added_at', { ascending: true });
         if (deviceData) setDevices(deviceData);
 
-        // B. Load Subscription (Prioritize Active)
-        // We fetch active first. If null, we fetch the latest (which might be expired/cancelled)
-        let { data: subData } = await supabase
+        // 2. Load Subscription (Billing Info)
+        const { data: subData, error } = await supabase
             .from('subscriptions')
             .select('*')
             .eq('user_id', user.id)
-            .eq('status', 'active')
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-        
-        if (!subData) {
-             // Fallback: Get whatever the latest one was
-             const { data: anySub } = await supabase
-                .from('subscriptions')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-             subData = anySub;
-        }
 
+        if (error) console.error("Sub Fetch Error:", error);
         if (subData) setSubscription(subData);
         setLoadingSub(false);
     };
     loadData();
   }, [user]);
 
-  // --- 2. REAL-TIME LISTENER (THE FIX) ---
-  useEffect(() => {
-      const channel = supabase
-        .channel('profile-updates')
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'subscriptions', filter: `user_id=eq.${user.id}` },
-            (payload) => {
-                console.log("🔔 Subscription Updated Real-time:", payload);
-                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                    setSubscription(payload.new);
-                }
-            }
-        )
-        .subscribe();
-
-      return () => { supabase.removeChannel(channel); };
-  }, [user.id]);
-
-  // --- TIMERS ---
+  // --- TIMERS (Heart & Sub) ---
   useEffect(() => {
     if (!regenTarget || hearts >= maxHearts || isInfiniteHearts) {
         setTimeLeft(null); setProgress(0); return;
@@ -163,44 +127,11 @@ export default function ProfileView() {
       addToast(result.message, result.success ? "success" : "error");
   };
 
-  // ▼▼▼ NEW: HEART REFILL PAYMENT ▼▼▼
-  const handleFullRestore = async () => {
-      if(!confirm(language === 'en' ? "Pay 1 GEL to fully restore hearts?" : "გადაიხადე 1 ლარი სრული აღდგენისთვის?")) return;
-      
-      try {
-          setProcessingPayment(true);
-
-          const { data, error } = await supabase.functions.invoke('bog-payment', {
-            body: {
-                action: 'create_order',
-                user_id: user.id,
-                type: 'hearts' // Triggers the heart refill logic
-            }
-          });
-
-          if (error) throw error;
-
-          if (data?.payment_url) {
-              window.location.href = data.payment_url;
-          } else {
-              throw new Error("No payment URL received.");
-          }
-
-      } catch (error) {
-          console.error("Payment Error:", error);
-          addToast(language === 'ka' ? "გადახდა ვერ განხორციელდა" : "Payment Failed", "error");
-      } finally {
-          setProcessingPayment(false);
-      }
-  };
-  // ▲▲▲ END NEW CODE ▲▲▲
-
   const handleCancelSubscription = async () => {
       if(!confirm(language === 'ka' ? "ნამდვილად გსურთ გაუქმება?" : "Are you sure you want to cancel?")) return;
       const { error } = await supabase.from('subscriptions').update({ status: 'cancelled' }).eq('id', subscription.id);
       if (error) addToast("Error: " + error.message, "error");
       else {
-          // Optimistic update, but the real-time listener will also confirm it
           setSubscription(prev => ({ ...prev, status: 'cancelled' }));
           addToast(language === 'ka' ? "გამოწერა გაუქმებულია" : "Subscription cancelled", "success");
       }
@@ -303,6 +234,7 @@ export default function ProfileView() {
   };
   const text = t[language] || t.en;
 
+  // Adaptive Rank Display Logic
   const getRankDisplay = () => {
     const titles = {
         archmage: { 
@@ -364,14 +296,19 @@ export default function ProfileView() {
             <div className={`w-full max-w-md p-6 rounded-2xl shadow-2xl border-2 ${isMagical ? 'bg-slate-900 border-amber-600 text-amber-50' : 'bg-white border-blue-500 text-slate-900'}`}>
                 <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold flex items-center gap-2"><Edit2 size={20}/>{text.editProfile}</h3><button onClick={()=>setShowEditModal(false)}><X/></button></div>
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
+                    
+                    {/* Full Name */}
                     <div>
                         <label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.displayName}</label>
                         <input type="text" value={newName} onChange={(e)=>setNewName(e.target.value)} className={`w-full p-3 rounded-xl border focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`}/>
                     </div>
+
+                    {/* Nickname / Magus Name */}
                     <div>
                         <label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.nickname}</label>
                         <input type="text" value={newNickname} onChange={(e)=>setNewNickname(e.target.value)} className={`w-full p-3 rounded-xl border focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`}/>
                     </div>
+
                     <div className="pt-2 border-t border-dashed border-gray-500/30">
                         <label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.changePass}</label>
                         <input type="password" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} className={`w-full p-3 rounded-xl border mb-2 focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`} placeholder={text.newPass}/>
@@ -402,9 +339,18 @@ export default function ProfileView() {
       {/* HEADER */}
       <div className={`relative overflow-hidden rounded-3xl p-8 mb-6 border-2 shadow-2xl ${isMagical ? 'bg-slate-900 border-amber-500/30 text-amber-50' : 'bg-white border-slate-200 text-slate-800'}`}>
         {isMagical && <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-[100px] rounded-full pointer-events-none"></div>}
+        
+        {/* THEME TOGGLE (New Feature) */}
         <div className="absolute top-4 right-4 z-20">
-            <button onClick={toggleTheme} className={`p-2 rounded-full border transition-all ${isMagical ? 'bg-slate-800 border-amber-500/50 text-amber-400 hover:bg-slate-700' : 'bg-white border-slate-300 text-blue-600 hover:bg-slate-50'}`} title={isMagical ? "Switch to Standard View" : "Switch to Magical View"}>{isMagical ? <Stethoscope size={20} /> : <Sparkles size={20} />}</button>
+            <button 
+                onClick={toggleTheme}
+                className={`p-2 rounded-full border transition-all ${isMagical ? 'bg-slate-800 border-amber-500/50 text-amber-400 hover:bg-slate-700' : 'bg-white border-slate-300 text-blue-600 hover:bg-slate-50'}`}
+                title={isMagical ? "Switch to Standard View" : "Switch to Magical View"}
+            >
+                {isMagical ? <Stethoscope size={20} /> : <Sparkles size={20} />}
+            </button>
         </div>
+
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
           <div className="relative group">
             <div className={`w-24 h-24 rounded-full border-4 flex items-center justify-center shadow-lg overflow-hidden relative ${isMagical ? 'border-amber-500 bg-slate-800 text-amber-500' : 'border-blue-500 bg-blue-50 text-blue-600'}`}>
@@ -414,11 +360,22 @@ export default function ProfileView() {
           </div>
           <div className="flex-1">
             <h2 className="text-3xl font-bold mb-1">{isMagical ? text.profileMagical : text.profileStandard}</h2>
+            
+            {/* RANK BADGE */}
             <div className="flex items-center justify-center md:justify-start gap-3 flex-wrap mt-2">
-                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-bold border ${isMagical ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}><rankInfo.icon size={14} className={rankInfo.color} /><span className={rankInfo.color}>{rankInfo.label}</span></div>
-                <div className="flex flex-col text-left">{displayName && <span className="text-xl font-bold leading-none">{displayName}</span>}{nickname && <span className={`text-sm font-mono opacity-60 ${isMagical ? 'text-amber-400' : 'text-slate-500'}`}>@{nickname}</span>}</div>
+                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-bold border ${isMagical ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+                    <rankInfo.icon size={14} className={rankInfo.color} /><span className={rankInfo.color}>{rankInfo.label}</span>
+                </div>
+                
+                {/* NAME & NICKNAME DISPLAY */}
+                <div className="flex flex-col text-left">
+                    {displayName && <span className="text-xl font-bold leading-none">{displayName}</span>}
+                    {nickname && <span className={`text-sm font-mono opacity-60 ${isMagical ? 'text-amber-400' : 'text-slate-500'}`}>@{nickname}</span>}
+                </div>
+
                 <button onClick={() => setShowEditModal(true)} className={`p-1.5 rounded-full transition-colors ${isMagical ? 'hover:bg-amber-900/30 text-amber-500' : 'hover:bg-blue-100 text-blue-600'}`} title="Edit"><Edit2 size={16} /></button>
             </div>
+            
             <div className="flex items-center justify-center md:justify-start gap-2 mt-4 opacity-70 text-sm"><Mail size={14} />{user?.email}</div>
           </div>
         </div>
@@ -442,28 +399,61 @@ export default function ProfileView() {
         </div>
       </div>
 
-      {/* SUBSCRIPTION / BILLING */}
+      {/* ▼▼▼ SUBSCRIPTION / BILLING ▼▼▼ */}
       <div className={`mb-6 p-6 rounded-2xl border-2 ${isMagical ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-100'}`}>
          <div className="flex items-center justify-between mb-4">
              <h3 className="text-sm uppercase tracking-wider font-bold opacity-60 flex items-center gap-2"><CreditCard size={14}/> {text.billTitle}</h3>
-             {subscription && (<span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${subscription.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>{subscription.status}</span>)}
+             {subscription && (
+                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${subscription.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                    {subscription.status}
+                 </span>
+             )}
          </div>
          
          {!subscription || subscription.status === 'expired' ? (
              <div className="text-center py-4">
                  <p className="opacity-60 mb-3 text-sm">{text.billNoSub}</p>
-                 <a href="/pricing" className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold ${isMagical ? 'bg-amber-600 text-white' : 'bg-blue-600 text-white'}`}><Crown size={16} /> {text.billUp}</a>
+                 <a href="/pricing" className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold ${isMagical ? 'bg-amber-600 text-white' : 'bg-blue-600 text-white'}`}>
+                    <Crown size={16} /> {text.billUp}
+                 </a>
              </div>
          ) : (
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                  <div>
-                    <div className="text-xl font-bold flex items-center gap-2">{getPlanName(subscription.plan_id)}</div>
+                    <div className="text-xl font-bold flex items-center gap-2">
+                        {getPlanName(subscription.plan_id)}
+                    </div>
+                    {/* EXPIRY & COUNTDOWN */}
                     <div className="text-xs opacity-70 flex flex-col gap-1 mt-1">
-                        <div className="flex items-center gap-1"><Calendar size={12}/> {subscription.status === 'cancelled' ? (language === 'ka' ? "წვდომა სანამ:" : "Access until:") : text.billNext}: <span className="font-bold text-slate-300 ml-1">{subscription.current_period_end ? new Date(subscription.current_period_end).toLocaleString() : (language === 'ka' ? "უვადო" : "Never")}</span></div>
-                        {subCountdown && (<div className={`flex items-center gap-1 font-mono font-bold ${subCountdown === 'EXPIRED' ? 'text-red-500' : 'text-amber-500'}`}>{subCountdown === 'LIFETIME' ? (<><InfinityIcon size={14} /> {language === 'ka' ? 'სამუდამო' : 'Lifetime Access'}</>) : (<><Clock size={12} /> {subCountdown === 'EXPIRED' ? (language === 'ka' ? 'ვადა ამოიწურა' : 'Plan Expired') : `${subCountdown} left`}</>)}</div>)}
+                        <div className="flex items-center gap-1">
+                            <Calendar size={12}/> 
+                            {subscription.status === 'cancelled' ? (language === 'ka' ? "წვდომა სანამ:" : "Access until:") : text.billNext}: 
+                            <span className="font-bold text-slate-300 ml-1">
+                                {subscription.current_period_end 
+                                    ? new Date(subscription.current_period_end).toLocaleString() 
+                                    : (language === 'ka' ? "უვადო" : "Never")}
+                            </span>
+                        </div>
+                        {subCountdown && (
+                            <div className={`flex items-center gap-1 font-mono font-bold ${subCountdown === 'EXPIRED' ? 'text-red-500' : 'text-amber-500'}`}>
+                                {subCountdown === 'LIFETIME' ? (
+                                    <><InfinityIcon size={14} /> {language === 'ka' ? 'სამუდამო' : 'Lifetime Access'}</>
+                                ) : (
+                                    <><Clock size={12} /> {subCountdown === 'EXPIRED' ? (language === 'ka' ? 'ვადა ამოიწურა' : 'Plan Expired') : `${subCountdown} left`}</>
+                                )}
+                            </div>
+                        )}
                     </div>
                  </div>
-                 {subscription.status === 'active' && (<button onClick={handleCancelSubscription} className="text-xs text-red-500 hover:text-red-400 border border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition self-start md:self-center">{text.billCancel}</button>)}
+                 
+                 {subscription.status === 'active' && (
+                     <button 
+                        onClick={handleCancelSubscription}
+                        className="text-xs text-red-500 hover:text-red-400 border border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition self-start md:self-center"
+                     >
+                        {text.billCancel}
+                     </button>
+                 )}
              </div>
          )}
       </div>
@@ -476,7 +466,10 @@ export default function ProfileView() {
                  const isCurrent = dev.device_id === currentDeviceId;
                  return (
                      <div key={dev.id} className={`p-4 rounded-xl border flex items-center justify-between ${isCurrent ? (isMagical ? 'bg-amber-900/10 border-amber-800/50' : 'bg-blue-50 border-blue-200') : (isMagical ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200')}`}>
-                         <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${isCurrent ? (isMagical ? 'bg-amber-900/30 text-amber-500' : 'bg-blue-100 text-blue-600') : (isMagical ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-400')}`}>{isCurrent ? <Shield size={18} /> : <Smartphone size={18} />}</div><div><div className="font-bold text-sm flex items-center gap-2">{language === 'ka' ? `მოწყობილობა ${i + 1}` : `Device ${i + 1}`}{isCurrent && <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${isMagical ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'}`}>{language === 'ka' ? 'აქტიური' : 'Current'}</span>}</div><div className="text-xs opacity-50 truncate max-w-[150px]">{dev.device_name || "Unknown Browser"}</div></div></div>
+                         <div className="flex items-center gap-3">
+                             <div className={`p-2 rounded-lg ${isCurrent ? (isMagical ? 'bg-amber-900/30 text-amber-500' : 'bg-blue-100 text-blue-600') : (isMagical ? 'bg-slate-800 text-slate-500' : 'bg-slate-200 text-slate-400')}`}>{isCurrent ? <Shield size={18} /> : <Smartphone size={18} />}</div>
+                             <div><div className="font-bold text-sm flex items-center gap-2">{language === 'ka' ? `მოწყობილობა ${i + 1}` : `Device ${i + 1}`}{isCurrent && <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${isMagical ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'}`}>{language === 'ka' ? 'აქტიური' : 'Current'}</span>}</div><div className="text-xs opacity-50 truncate max-w-[150px]">{dev.device_name || "Unknown Browser"}</div></div>
+                         </div>
                          <div className="text-xs opacity-50 font-mono">{new Date(dev.added_at).toLocaleDateString()}</div>
                      </div>
                  );
@@ -485,13 +478,13 @@ export default function ProfileView() {
          {tier !== 'archmage' && <button onClick={() => setShowContactModal(true)} className={`w-full py-3 rounded-xl font-bold border-2 border-dashed flex items-center justify-center gap-2 transition-all ${isMagical ? 'border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-500' : 'border-slate-200 text-slate-500 hover:border-blue-500 hover:text-blue-500'}`}><Mail size={16} /> {text.contact}</button>}
       </div>
 
-      {/* ACTIONS */}
+      {/* ACTIONS & SIGNOUT */}
       {!isInfiniteHearts && hearts < maxHearts && (
         <div className={`mb-6 p-6 rounded-2xl border-2 ${isMagical ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-100'}`}>
             <h3 className="text-sm uppercase tracking-wider font-bold opacity-60 mb-4">{text.actions}</h3>
-            <div className="grid grid-cols-2 gap-4">
+            {/* CHANGED TO 1 COLUMN */}
+            <div className="grid grid-cols-1 gap-4">
                 <button onClick={handleHeal} disabled={!canAffordHeal} className={`min-h-[140px] flex flex-col justify-between p-4 rounded-xl border-2 transition-all group ${canAffordHeal ? (isMagical ? 'border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400' : 'border-green-200 bg-green-50 hover:bg-green-100 text-green-700') : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'}`}><div className="w-full flex justify-center"><PlusCircle size={32} className={!canAffordHeal ? "opacity-50" : ""} /></div><div className="font-bold text-sm text-center">{text.healBtn}</div><div className="w-full flex justify-center">{canAffordHeal ? <span className="text-xs opacity-70 font-bold">{text.healCost}</span> : <div className="bg-slate-900/80 text-white text-xs font-bold py-1 px-3 rounded-full flex items-center gap-1 shadow-sm"><Lock size={10} /><span>{text.need} {missingXp} {text.more}</span></div>}</div></button>
-                <button onClick={handleFullRestore} disabled={processingPayment} className={`min-h-[140px] flex flex-col justify-between p-4 rounded-xl border-2 transition-all ${isMagical ? 'border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400' : 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700'}`}><div className="w-full flex justify-center">{processingPayment ? <Loader2 className="animate-spin" size={32}/> : <CreditCard size={32} />}</div><div className="font-bold text-sm text-center">{text.fullBtn}</div><div className="w-full flex justify-center"><span className="text-xs opacity-70 font-bold">{text.fullCost}</span></div></button>
             </div>
         </div>
       )}
