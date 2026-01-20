@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useGameLogic } from '../hooks/useGameLogic';
-import { supabase } from '/src/supabaseClient.js';
+import { supabase } from '../supabaseClient';
 import { 
   Users, ShieldAlert, Plus, DollarSign, 
   CheckCircle, Lock, Crown, ArrowLeft, Send,
@@ -17,8 +17,7 @@ export default function CommunityHub({ onBack }) {
   const isMagical = theme === 'magical';
   const isArchmage = tier === 'archmage'; 
 
-  // --- 1. SMART INITIALIZATION (FIXED FOR DEEP LINKS) ---
-  // We check BOTH the URL (direct link) AND LocalStorage (redirect from App.jsx)
+  // --- 1. SMART INITIALIZATION ---
   const getInitialPostId = () => {
       return searchParams.get('community') || localStorage.getItem('pending_community_id');
   };
@@ -46,13 +45,14 @@ export default function CommunityHub({ onBack }) {
   const [rewardPopup, setRewardPopup] = useState({ show: false, amount: 0, success: true });
   const [banModal, setBanModal] = useState({ show: false, userId: null, userName: '', currentStrikes: 0 });
 
+  // --- TRANSLATIONS & RANKS ---
   const t = {
     en: {
       title: isMagical ? "Council of Elders" : "Conference Room",
       rulesTitle: isMagical ? "Sacred Laws of the Council" : "Code of Conduct",
       rulesText: "Cursing, toxicity, or disrespect is STRICTLY FORBIDDEN. Violators will be banished for 24 hours on the first offense. Each subsequent offense adds +24 hours.",
       agree: isMagical ? "I Swear to Uphold the Law" : "I Agree",
-      create: "Post Question",
+      create: isMagical ? "Inscribe Query" : "Post Question",
       bounty: "XP Cost (Bounty)",
       postBtn: "Post Question",
       solved: isMagical ? "Bounty Fulfilled" : "Advice Taken", 
@@ -90,7 +90,7 @@ export default function CommunityHub({ onBack }) {
       rulesTitle: isMagical ? "საბჭოს წმინდა კანონები" : "ქცევის კოდექსი",
       rulesText: "უწმაწური სიტყვები და შეურაცხყოფა მკაცრად აკრძალულია. დამრღვევები დაისჯებიან 24 საათიანი ბანით. ყოველი შემდეგი დარღვევა +24 საათი.",
       agree: isMagical ? "ვიცავ საბჭოს წესებს" : "ვეთანხმები",
-      create: "კითხვის დასმა",
+      create: isMagical ? "შეკითხვის დასმა" : "კითხვის დასმა",
       bounty: "XP ღირებულება",
       postBtn: "გამოქვეყნება",
       solved: "ჯილდო გაცემულია",
@@ -103,7 +103,7 @@ export default function CommunityHub({ onBack }) {
       back: "უკან",
       anon: "ანონიმური გამოქვეყნება",
       anonCost: "(+50 XP საკომისიო)",
-      unknown: isMagical ? "უცნობი მაგისტრროსი" : "ანონიმური მომხმარებელი",
+      unknown: isMagical ? "უცნობი მაგისტროსი" : "ანონიმური მომხმარებელი",
       popTitleMagic: "ჯილდო გაცემულია",
       popTitleStd: "რჩევა მიღებულია",
       popDescMagic: "თქვენ დააჯილდოვეთ მეცნიერი ცოდნითა და ძალით.",
@@ -126,19 +126,29 @@ export default function CommunityHub({ onBack }) {
   };
   const text = t[language];
 
-  // --- 2. URL LISTENER (FIXED) ---
+  // --- NEW: ADAPTIVE RANK HELPER ---
+  const getRankLabel = (rankKey) => {
+      if (!rankKey) return "";
+      const titles = {
+          archmage: { magical: "Archmage", standard: "Admin", ka_magical: "არქიმაგი", ka_standard: "ადმინისტრატორი" },
+          grand_magus: { magical: "Grand Magus", standard: "Attending Physician", ka_magical: "დიდი ჯადოქარი", ka_standard: "მკურნალი ექიმი" },
+          magus: { magical: "Magus", standard: "Resident", ka_magical: "ჯადოქარი", ka_standard: "რეზიდენტი" },
+          apprentice: { magical: "Apprentice", standard: "Student", ka_magical: "შეგირდი", ka_standard: "სტუდენტი" },
+          insubstantial: { magical: "Insubstantial", standard: "Observer", ka_magical: "ილუზორული", ka_standard: "დამკვირვებელი" }
+      };
+      
+      const entry = titles[rankKey] || titles.apprentice;
+      if (language === 'ka') return isMagical ? entry.ka_magical : entry.ka_standard;
+      return isMagical ? entry.magical : entry.standard;
+  };
+
+  // --- 2. LOGIC ---
   useEffect(() => {
-    // 1. Check URL first
     let postId = searchParams.get('community');
-    
-    // 2. Check Handover from App.jsx
-    if (!postId) {
-        postId = localStorage.getItem('pending_community_id');
-    }
+    if (!postId) postId = localStorage.getItem('pending_community_id');
 
     if (postId) {
         console.log("🔗 Community Deep Link Detected:", postId);
-        
         const fetchDeepLinkPost = async () => {
             const { data: post, error } = await supabase
                 .from('community_posts')
@@ -151,13 +161,11 @@ export default function CommunityHub({ onBack }) {
                 fetchAnswers(post.id);
                 setView('post');
                 setShowRules(false);
-                // Clean up local storage so it doesn't stick
                 localStorage.removeItem('pending_community_id');
             }
         };
         fetchDeepLinkPost();
     } else {
-        // Only reset to feed if we are NOT in create mode
         if (view !== 'create' && view !== 'post') setView('feed');
     }
   }, [searchParams]);
@@ -188,26 +196,25 @@ export default function CommunityHub({ onBack }) {
     if (data) setAnswers(data);
   };
 
+  // --- NEW: IDENTITY WITH NICKNAME SUPPORT ---
   const getUserIdentity = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      const name = user.user_metadata.full_name || user.user_metadata.username || user.email.split('@')[0];
+      const nickname = user.user_metadata.nickname;
+      const fullName = user.user_metadata.full_name;
+      
+      // Priority: Nickname -> FullName -> Email Part
+      const displayName = nickname || fullName || user.email.split('@')[0];
       const avatar = user.user_metadata.avatar_url || null;
-      return { id: user.id, name, avatar };
+      
+      return { id: user.id, name: displayName, avatar };
   };
 
   const checkBanStatus = async () => {
-      const { data } = await supabase
-          .from('profiles')
-          .select('banned_until')
-          .eq('id', currentUserId)
-          .single();
-      
+      const { data } = await supabase.from('profiles').select('banned_until').eq('id', currentUserId).single();
       if (data?.banned_until) {
           const banTime = new Date(data.banned_until);
           if (banTime > new Date()) {
-              alert(language === 'ka' 
-                  ? `თქვენ დაბლოკილი ხართ: ${banTime.toLocaleString()}-მდე.` 
-                  : `You are banished until: ${banTime.toLocaleString()}.`);
+              alert(language === 'ka' ? `თქვენ დაბლოკილი ხართ: ${banTime.toLocaleString()}-მდე.` : `You are banished until: ${banTime.toLocaleString()}.`);
               return true; 
           }
       }
@@ -219,89 +226,48 @@ export default function CommunityHub({ onBack }) {
       if (!confirm(text.deleteConfirm)) return;
       const table = type === 'post' ? 'community_posts' : 'community_answers';
       await supabase.from(table).delete().eq('id', itemId);
-      
-      if (type === 'post') {
-          setView('feed');
-          fetchPosts();
-      } else {
-          setAnswers(prev => prev.filter(a => a.id !== itemId));
-      }
+      if (type === 'post') { setView('feed'); fetchPosts(); } 
+      else { setAnswers(prev => prev.filter(a => a.id !== itemId)); }
   };
 
-  // 1. OPEN BAN MENU
   const openBanMenu = async (targetUserId, targetName) => {
-      const { data: profile } = await supabase
-          .from('profiles')
-          .select('strikes')
-          .eq('id', targetUserId)
-          .single();
-      
-      setBanModal({
-          show: true,
-          userId: targetUserId,
-          userName: targetName,
-          currentStrikes: profile?.strikes || 0
-      });
+      const { data: profile } = await supabase.from('profiles').select('strikes').eq('id', targetUserId).single();
+      setBanModal({ show: true, userId: targetUserId, userName: targetName, currentStrikes: profile?.strikes || 0 });
   };
 
-  // 2. EXECUTE BAN
   const executeBan = async (hours) => {
       const { userId, currentStrikes } = banModal;
       const newStrikeCount = currentStrikes + 1;
       const until = hours > 0 ? new Date(Date.now() + hours * 3600000).toISOString() : null;
       
-      const { error } = await supabase.from('profiles').update({
-          strikes: newStrikeCount,
-          banned_until: until
-      }).eq('id', userId);
+      const { error } = await supabase.from('profiles').update({ strikes: newStrikeCount, banned_until: until }).eq('id', userId);
 
-      if (error) {
-          console.error("Ban Failed:", error);
-          alert("Error: Database permission denied.");
-      } else {
+      if (error) { alert("Error: Database permission denied."); } else {
           let punishmentText = text.banWarn; 
           if (hours === 24) punishmentText = text.ban24;
           if (hours === 168) punishmentText = text.ban7;
           if (hours === 87600) punishmentText = text.banPerm;
 
           const notifTitle = isMagical ? "Divine Judgement Recieved" : "Administrative Action";
-          const notifMsg = isMagical 
-            ? `The Archmage has spoken. Penalty: ${punishmentText}. Total Strikes: ${newStrikeCount}.`
-            : `You have been penalized: ${punishmentText}. Total Strikes: ${newStrikeCount}.`;
+          const notifMsg = isMagical ? `The Archmage has spoken. Penalty: ${punishmentText}.` : `You have been penalized: ${punishmentText}.`;
 
-          await supabase.from('notifications').insert({
-              user_id: userId,
-              type: 'report',
-              title: notifTitle,
-              message: notifMsg,
-              link: null 
-          });
-
-          alert(`Judgement delivered. User notified of Strike ${newStrikeCount}.`);
+          await supabase.from('notifications').insert({ user_id: userId, type: 'report', title: notifTitle, message: notifMsg, link: null });
+          alert(`Judgement delivered.`);
           setBanModal({ show: false, userId: null, userName: '', currentStrikes: 0 });
       }
   };
 
   // --- EDIT HANDLERS ---
   const startEditing = (item, type) => {
-      setEditingId(item.id);
-      setEditContent(item.content);
-      setEditTitle(item.title || ''); 
-      setEditType(type);
+      setEditingId(item.id); setEditContent(item.content); setEditTitle(item.title || ''); setEditType(type);
   };
 
   const handleEditFromFeed = (post) => {
-      setActivePost(post);
-      fetchAnswers(post.id);
-      setView('post');
-      startEditing(post, 'post');
+      setActivePost(post); fetchAnswers(post.id); setView('post'); startEditing(post, 'post');
   };
 
   const cancelEditing = () => {
-      setEditingId(null);
-      setEditContent('');
-      setEditTitle(''); 
-      setEditType(null);
+      setEditingId(null); setEditContent(''); setEditTitle(''); setEditType(null);
   };
 
   const saveEdit = async () => {
@@ -311,36 +277,25 @@ export default function CommunityHub({ onBack }) {
       if (editType === 'post') {
           await supabase.from('community_posts').update({ title: editTitle, content: editContent }).eq('id', editingId);
           setPosts(posts.map(p => p.id === editingId ? { ...p, title: editTitle, content: editContent } : p));
-          if (activePost && activePost.id === editingId) {
-              setActivePost({ ...activePost, title: editTitle, content: editContent });
-          }
+          if (activePost && activePost.id === editingId) setActivePost({ ...activePost, title: editTitle, content: editContent });
       } else if (editType === 'answer') {
           await supabase.from('community_answers').update({ content: editContent }).eq('id', editingId);
           setAnswers(answers.map(a => a.id === editingId ? { ...a, content: editContent } : a));
       }
-
       cancelEditing();
   };
 
   const handleReport = async (item, type) => {
       if (!confirm(text.reportConfirm)) return;
-      // 🛑 REPLACE WITH YOUR REAL ARCHMAGE ID
       const ARCHMAGE_ID = "1279a5ed-bd3d-48e6-8338-a5a36c19cdff"; 
-
       try {
           await supabase.from('notifications').insert({
-              user_id: ARCHMAGE_ID, 
-              type: 'report',
-              title: isMagical ? "Dark Magic Detected" : "Content Reported",
-              message: isMagical 
-                ? `A ${type} by ${item.author_name} has been flagged for dark arts.` 
-                : `A ${type} by ${item.author_name} was reported.`,
-              link: `/?community=${activePost ? activePost.id : item.id}` // <--- FIXED LINK
+              user_id: ARCHMAGE_ID, type: 'report', title: isMagical ? "Dark Magic Detected" : "Content Reported",
+              message: isMagical ? `A ${type} by ${item.author_name} has been flagged.` : `A ${type} by ${item.author_name} was reported.`,
+              link: `/?community=${activePost ? activePost.id : item.id}`
           });
           alert(text.reported);
-      } catch (err) {
-          alert("Failed to report.");
-      }
+      } catch (err) { alert("Failed to report."); }
   };
 
   // --- ACTIONS ---
@@ -352,58 +307,35 @@ export default function CommunityHub({ onBack }) {
     const anonFee = isAnonymous ? 50 : 0;
     const totalCost = bounty + anonFee;
 
-    // --- ARCHMAGE GOD MODE CHECK ---
-    if (!isArchmage && xp < totalCost) {
-        return alert(`Not enough XP! You need ${totalCost} XP.`);
-    }
+    if (!isArchmage && xp < totalCost) return alert(`Not enough XP! You need ${totalCost} XP.`);
 
-    // --- DEDUCT XP (Only if NOT Archmage) ---
     if (!isArchmage) {
-        const { error: xpError } = await supabase
-            .from('profiles')
-            .update({ xp: xp - totalCost })
-            .eq('id', currentUserId);
-        
-        if (xpError) {
-            return alert("Transaction failed. Please try again.");
-        }
+        const { error: xpError } = await supabase.from('profiles').update({ xp: xp - totalCost }).eq('id', currentUserId);
+        if (xpError) return alert("Transaction failed.");
     }
 
     const user = await getUserIdentity();
-
     const displayName = isAnonymous ? text.unknown : user.name;
     const displayAvatar = isAnonymous ? null : user.avatar;
     const displayTitle = isAnonymous ? null : tier; 
 
     const { error } = await supabase.from('community_posts').insert({
-      user_id: user.id,
-      author_name: displayName,
-      author_avatar: displayAvatar,
-      author_title: displayTitle, 
-      title: newTitle,
-      content: newContent,
-      bounty: bounty,
-      is_solved: false
+      user_id: user.id, author_name: displayName, author_avatar: displayAvatar, author_title: displayTitle,
+      title: newTitle, content: newContent, bounty: bounty, is_solved: false
     });
 
     if (!error) {
       setNewTitle(''); setNewContent(''); setBounty(100); setIsAnonymous(false);
       setView('feed'); fetchPosts();
-    } else {
-        alert("Failed to create post: " + error.message);
-    }
+    } else alert("Failed: " + error.message);
   };
 
   const handleOpenPost = (post) => {
-    setActivePost(post);
-    fetchAnswers(post.id);
-    setView('post');
+    setActivePost(post); fetchAnswers(post.id); setView('post');
   };
 
   const handleBack = () => {
-      setSearchParams({}); 
-      setView('feed');
-      if (view === 'feed' && onBack) onBack(); 
+      setSearchParams({}); setView('feed'); if (view === 'feed' && onBack) onBack(); 
   };
 
   const handlePostReply = async () => {
@@ -411,45 +343,28 @@ export default function CommunityHub({ onBack }) {
     if (!replyContent.trim()) return;
     const user = await getUserIdentity();
     const { error } = await supabase.from('community_answers').insert({
-      post_id: activePost.id,
-      user_id: user.id,
-      author_name: user.name,
-      author_avatar: user.avatar,
-      author_title: tier, 
-      content: replyContent,
-      is_accepted: false
+      post_id: activePost.id, user_id: user.id, author_name: user.name, author_avatar: user.avatar, author_title: tier, 
+      content: replyContent, is_accepted: false
     });
 
     if (!error) { 
-        // Notify Author of New Reply
         if (activePost.user_id !== user.id) {
             await supabase.from('notifications').insert({
-                user_id: activePost.user_id, 
-                type: 'reply',
-                title: isMagical ? "A Scholar Has Responded" : "New Reply",
-                message: isMagical ? `${user.name} has inscribed a response to your query.` : `${user.name} commented on your question.`,
-                link: `/?community=${activePost.id}` // <--- FIXED LINK
+                user_id: activePost.user_id, type: 'reply', title: isMagical ? "A Scholar Has Responded" : "New Reply",
+                message: isMagical ? `${user.name} responded to your query.` : `${user.name} commented on your question.`,
+                link: `/?community=${activePost.id}`
             });
         }
-        setReplyContent(''); 
-        fetchAnswers(activePost.id); 
+        setReplyContent(''); fetchAnswers(activePost.id); 
     }
   };
 
   const handleAcceptAnswer = async (answer) => {
     const reward = Math.floor(activePost.bounty / 2);
-    const msg = language === 'ka' 
-        ? `დაადასტურეთ პასუხი? ავტორი მიიღებს ${reward} XP-ს.`
-        : `Accept this answer? Author receives ${reward} XP.`;
-
-    if (!confirm(msg)) return;
+    if (!confirm(language === 'ka' ? `დაადასტურეთ? ავტორი მიიღებს ${reward} XP-ს.` : `Accept answer? Author gets ${reward} XP.`)) return;
 
     try {
-        const { data: wasSuccess, error: rpcError } = await supabase.rpc('grant_bounty', { 
-            target_user_id: answer.user_id, 
-            xp_amount: reward 
-        });
-
+        const { data: wasSuccess, error: rpcError } = await supabase.rpc('grant_bounty', { target_user_id: answer.user_id, xp_amount: reward });
         if (rpcError) throw rpcError;
         if (!wasSuccess) throw new Error("User record not found.");
 
@@ -457,24 +372,18 @@ export default function CommunityHub({ onBack }) {
         await supabase.from('community_answers').update({ is_accepted: true }).eq('id', answer.id);
 
         await supabase.from('notifications').insert({
-            user_id: answer.user_id, 
-            type: 'bounty',
-            title: isMagical ? "Bounty Awarded!" : "Answer Accepted",
-            message: isMagical ? `You have earned ${reward} XP for your wisdom.` : `Your answer was marked as correct. +${reward} XP.`,
-            link: `/?community=${activePost.id}` // <--- FIXED LINK
+            user_id: answer.user_id, type: 'bounty', title: isMagical ? "Bounty Awarded!" : "Answer Accepted",
+            message: isMagical ? `You earned ${reward} XP.` : `Answer accepted. +${reward} XP.`,
+            link: `/?community=${activePost.id}`
         });
 
         setActivePost(prev => ({ ...prev, is_solved: true }));
         fetchAnswers(activePost.id);
         setRewardPopup({ show: true, amount: reward, success: true });
-
-    } catch (err) {
-        setRewardPopup({ show: true, amount: 0, success: false });
-    }
+    } catch (err) { setRewardPopup({ show: true, amount: 0, success: false }); }
   };
 
   // --- RENDER ---
-
   return (
     <div className="max-w-7xl mx-auto p-4 pb-20 animate-in fade-in relative">
       
@@ -482,35 +391,17 @@ export default function CommunityHub({ onBack }) {
       {banModal.show && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4 animate-in fade-in">
             <div className={`max-w-md w-full p-6 rounded-2xl border-2 text-center shadow-2xl ${isMagical ? 'bg-slate-900 border-red-900 text-red-100' : 'bg-white border-red-500 text-slate-900'}`}>
-                <div className="mb-4 flex justify-center">
-                    <div className="p-4 rounded-full bg-red-500/20 text-red-500 animate-pulse">
-                        <Gavel size={48} />
-                    </div>
-                </div>
+                <div className="mb-4 flex justify-center"><div className="p-4 rounded-full bg-red-500/20 text-red-500 animate-pulse"><Gavel size={48} /></div></div>
                 <h2 className="text-2xl font-bold mb-2">{text.banTitle}</h2>
                 <div className="text-lg font-bold mb-1 opacity-90">{banModal.userName}</div>
-                <div className="text-sm opacity-60 mb-6 flex items-center justify-center gap-2">
-                    <AlertTriangle size={14} /> {text.strikes}: {banModal.currentStrikes}
-                </div>
-
+                <div className="text-sm opacity-60 mb-6 flex items-center justify-center gap-2"><AlertTriangle size={14} /> {text.strikes}: {banModal.currentStrikes}</div>
                 <div className="grid grid-cols-1 gap-3 mb-6">
-                    <button onClick={() => executeBan(0)} className="p-3 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-600 font-bold border border-yellow-500/30 transition-colors text-left px-4">
-                        1. {text.banWarn}
-                    </button>
-                    <button onClick={() => executeBan(24)} className="p-3 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 font-bold border border-orange-500/30 transition-colors text-left px-4">
-                        2. {text.ban24}
-                    </button>
-                    <button onClick={() => executeBan(168)} className="p-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 font-bold border border-red-500/30 transition-colors text-left px-4">
-                        3. {text.ban7}
-                    </button>
-                    <button onClick={() => executeBan(87600)} className="p-3 rounded-lg bg-slate-950 hover:bg-black text-slate-400 font-bold border border-slate-800 transition-colors text-left px-4">
-                        4. {text.banPerm}
-                    </button>
+                    <button onClick={() => executeBan(0)} className="p-3 rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-600 font-bold border border-yellow-500/30 text-left px-4">1. {text.banWarn}</button>
+                    <button onClick={() => executeBan(24)} className="p-3 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 font-bold border border-orange-500/30 text-left px-4">2. {text.ban24}</button>
+                    <button onClick={() => executeBan(168)} className="p-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 font-bold border border-red-500/30 text-left px-4">3. {text.ban7}</button>
+                    <button onClick={() => executeBan(87600)} className="p-3 rounded-lg bg-slate-950 hover:bg-black text-slate-400 font-bold border border-slate-800 text-left px-4">4. {text.banPerm}</button>
                 </div>
-
-                <button onClick={() => setBanModal({ ...banModal, show: false })} className="text-sm opacity-50 hover:opacity-100 underline">
-                    {text.cancel}
-                </button>
+                <button onClick={() => setBanModal({ ...banModal, show: false })} className="text-sm opacity-50 hover:opacity-100 underline">{text.cancel}</button>
             </div>
         </div>
       )}
@@ -615,7 +506,7 @@ export default function CommunityHub({ onBack }) {
                   <div className="flex items-center gap-3 mb-2">
                       {post.author_avatar ? <img src={post.author_avatar} alt="Avatar" className="w-10 h-10 rounded-full border-2 border-slate-500 object-cover" /> : <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isMagical ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>{post.author_name === text.unknown ? <Ghost size={20} /> : <User size={20} />}</div>}
                       <div>
-                          <div className="font-bold text-sm flex items-center gap-1">{post.author_title && <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${isMagical ? 'bg-amber-900/30 border-amber-500 text-amber-400' : 'bg-blue-100 border-blue-300 text-blue-600'}`}>{post.author_title}</span>}{post.author_name}</div>
+                          <div className="font-bold text-sm flex items-center gap-1">{post.author_title && <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${isMagical ? 'bg-amber-900/30 border-amber-500 text-amber-400' : 'bg-blue-100 border-blue-300 text-blue-600'}`}>{getRankLabel(post.author_title)}</span>}{post.author_name}</div>
                           <div className="text-xs opacity-40 font-mono mt-1">{new Date(post.created_at).toLocaleDateString()}</div>
                       </div>
                   </div>
@@ -625,37 +516,18 @@ export default function CommunityHub({ onBack }) {
 
               <div className="flex justify-end gap-2 items-center mt-2 z-20">
                   {currentUserId === post.user_id && (
-                      <button onClick={(e) => { e.stopPropagation(); handleEditFromFeed(post); }} className="p-2 rounded-full bg-black/10 hover:bg-black/20 text-slate-500 hover:text-blue-500 transition-colors" title={text.edit}>
-                          <Pencil size={16} className="pointer-events-none" />
-                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleEditFromFeed(post); }} className="p-2 rounded-full bg-black/10 hover:bg-black/20 text-slate-500 hover:text-blue-500 transition-colors" title={text.edit}><Pencil size={16} className="pointer-events-none" /></button>
                   )}
-
                   {!isArchmage && currentUserId !== post.user_id && (
-                      <button onClick={(e) => { e.stopPropagation(); handleReport(post, 'post'); }} className="p-2 rounded-full bg-black/10 hover:bg-red-900/30 text-red-400/50 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100" title={text.report}>
-                          <Flag size={16} className="pointer-events-none" />
-                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleReport(post, 'post'); }} className="p-2 rounded-full bg-black/10 hover:bg-red-900/30 text-red-400/50 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100" title={text.report}><Flag size={16} className="pointer-events-none" /></button>
                   )}
-
                   {isArchmage && (
                       <>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); openBanMenu(post.user_id, post.author_name); }} 
-                            className="p-2 rounded-full bg-red-900/20 text-red-400 hover:bg-red-900 hover:text-white transition-colors"
-                            title="Ban User"
-                          >
-                              <Gavel size={16} />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleDelete(post.id, 'post'); }} 
-                            className="p-2 rounded-full bg-slate-700/50 text-slate-400 hover:bg-red-600 hover:text-white transition-colors"
-                            title="Delete Post"
-                          >
-                              <Trash2 size={16} />
-                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); openBanMenu(post.user_id, post.author_name); }} className="p-2 rounded-full bg-red-900/20 text-red-400 hover:bg-red-900 hover:text-white transition-colors" title="Ban User"><Gavel size={16} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(post.id, 'post'); }} className="p-2 rounded-full bg-slate-700/50 text-slate-400 hover:bg-red-600 hover:text-white transition-colors" title="Delete Post"><Trash2 size={16} /></button>
                       </>
                   )}
               </div>
-
             </div>
           ))}
         </div>
@@ -673,7 +545,7 @@ export default function CommunityHub({ onBack }) {
             <div className="flex items-center gap-3 mb-6 border-b border-white/5 pb-4 pr-32">
                 {activePost.author_avatar ? <img src={activePost.author_avatar} className="w-12 h-12 rounded-full border-2 border-amber-500/50 object-cover" /> : <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isMagical ? 'bg-slate-700' : 'bg-slate-100'}`}>{activePost.author_name === text.unknown ? <Ghost /> : <User />}</div>}
                 <div>
-                    <div className={`font-bold flex items-center gap-2 ${isMagical ? 'text-amber-100' : 'text-slate-900'}`}>{activePost.author_title && <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${isMagical ? 'bg-amber-900/30 border-amber-500 text-amber-400' : 'bg-blue-100 border-blue-300 text-blue-600'}`}>{activePost.author_title}</span>}{activePost.author_name}</div>
+                    <div className={`font-bold flex items-center gap-2 ${isMagical ? 'text-amber-100' : 'text-slate-900'}`}>{activePost.author_title && <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${isMagical ? 'bg-amber-900/30 border-amber-500 text-amber-400' : 'bg-blue-100 border-blue-300 text-blue-600'}`}>{getRankLabel(activePost.author_title)}</span>}{activePost.author_name}</div>
                     <div className="text-xs opacity-50 flex items-center gap-2 mt-1"><span>{new Date(activePost.created_at).toLocaleString()}</span><span className="text-amber-500 font-bold">• {text.reward}: {Math.floor(activePost.bounty / 2)} XP</span></div>
                 </div>
             </div>
@@ -708,7 +580,7 @@ export default function CommunityHub({ onBack }) {
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-2">
                       {ans.author_avatar ? <img src={ans.author_avatar} className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-slate-500/20 flex items-center justify-center"><User size={14}/></div>}
-                      <div className="text-xs font-bold opacity-70 flex items-center gap-1">{ans.author_title && <span className="text-[9px] uppercase px-1 rounded bg-black/20">{ans.author_title}</span>}{ans.author_name}</div>
+                      <div className="text-xs font-bold opacity-70 flex items-center gap-1">{ans.author_title && <span className="text-[9px] uppercase px-1 rounded bg-black/20">{getRankLabel(ans.author_title)}</span>}{ans.author_name}</div>
                   </div>
                   <div className="flex items-center gap-2">
                       {ans.is_accepted && <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1 ${isMagical ? 'bg-amber-500 text-black' : 'bg-green-600 text-white'}`}><CheckCircle size={12} fill="currentColor" /> {text.accepted}</span>}

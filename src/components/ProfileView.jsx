@@ -7,12 +7,13 @@ import { supabase } from '../supabaseClient';
 import { 
   User, Mail, Award, Heart, Clock, Shield, LogOut,
   Infinity as InfinityIcon, Ghost, Crown, Star, Camera, Loader2,
-  CreditCard, PlusCircle, Lock, Smartphone, Send, Edit2, Save, X, Calendar
+  CreditCard, PlusCircle, Lock, Smartphone, Send, Edit2, Save, X, Calendar,
+  Sparkles, Stethoscope
 } from 'lucide-react';
 
 export default function ProfileView() {
   const { user, signOut } = useAuth();
-  const { theme, language } = useTheme();
+  const { theme, language, toggleTheme } = useTheme(); // Added toggleTheme
   const { addToast } = useToast();
   
   const { 
@@ -27,6 +28,7 @@ export default function ProfileView() {
   // --- USER DATA STATE ---
   const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || null);
   const [displayName, setDisplayName] = useState(user?.user_metadata?.full_name || '');
+  const [nickname, setNickname] = useState(user?.user_metadata?.nickname || ''); // NEW: Magus Name
   const [uploading, setUploading] = useState(false);
 
   // --- SUBSCRIPTION STATE ---
@@ -37,6 +39,7 @@ export default function ProfileView() {
   // --- EDIT MODAL STATE ---
   const [showEditModal, setShowEditModal] = useState(false);
   const [newName, setNewName] = useState(displayName);
+  const [newNickname, setNewNickname] = useState(nickname); // NEW
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -62,42 +65,32 @@ export default function ProfileView() {
         if (deviceData) setDevices(deviceData);
 
         // 2. Load Subscription (Billing Info)
-        // UPDATED: Fetches the LATEST subscription created
         const { data: subData, error } = await supabase
             .from('subscriptions')
             .select('*')
             .eq('user_id', user.id)
-            .order('created_at', { ascending: false }) // Get the newest one
+            .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
 
-        if (error) {
-            console.error("Sub Fetch Error:", error);
-        }
-
-        if (subData) {
-            setSubscription(subData);
-        }
+        if (error) console.error("Sub Fetch Error:", error);
+        if (subData) setSubscription(subData);
         setLoadingSub(false);
     };
     loadData();
   }, [user]);
 
-  // --- HEART REGEN TIMER ---
+  // --- TIMERS (Heart & Sub) ---
   useEffect(() => {
     if (!regenTarget || hearts >= maxHearts || isInfiniteHearts) {
-        setTimeLeft(null);
-        setProgress(0);
-        return;
+        setTimeLeft(null); setProgress(0); return;
     }
     const interval = setInterval(() => {
         const now = Date.now();
         const target = new Date(regenTarget).getTime(); 
         const diff = target - now;
-        if (diff <= 0) {
-            setTimeLeft('00:00');
-            setProgress(100);
-        } else {
+        if (diff <= 0) { setTimeLeft('00:00'); setProgress(100); } 
+        else {
             const m = Math.floor(diff / 60000);
             const s = Math.floor((diff % 60000) / 1000);
             setTimeLeft(`${m}:${s < 10 ? '0' : ''}${s}`);
@@ -109,38 +102,20 @@ export default function ProfileView() {
     return () => clearInterval(interval);
   }, [regenTarget, hearts, maxHearts, isInfiniteHearts, regenSpeed]);
 
-  // --- SUBSCRIPTION COUNTDOWN TIMER ---
   useEffect(() => {
-      // 1. If no sub, do nothing
       if (!subscription) return;
-
-      // 2. If Lifetime (Date is null/empty), set status to Lifetime
-      if (!subscription.current_period_end) {
-          setSubCountdown("LIFETIME");
-          return;
-      }
-
-      // 3. Standard Countdown Logic
+      if (!subscription.current_period_end) { setSubCountdown("LIFETIME"); return; }
       const updateCountdown = () => {
           const now = new Date().getTime();
           const target = new Date(subscription.current_period_end).getTime();
           const diff = target - now;
-
-          if (diff <= 0) {
-              setSubCountdown("EXPIRED");
-              return;
-          }
-
+          if (diff <= 0) { setSubCountdown("EXPIRED"); return; }
           const d = Math.floor(diff / (1000 * 60 * 60 * 24));
           const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
           const s = Math.floor((diff % (1000 * 60)) / 1000);
-
-          setSubCountdown(
-              `${d}:${h < 10 ? '0' + h : h}:${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`
-          );
+          setSubCountdown(`${d}:${h < 10 ? '0' + h : h}:${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`);
       };
-
       updateCountdown(); 
       const timer = setInterval(updateCountdown, 1000);
       return () => clearInterval(timer);
@@ -161,15 +136,9 @@ export default function ProfileView() {
 
   const handleCancelSubscription = async () => {
       if(!confirm(language === 'ka' ? "ნამდვილად გსურთ გაუქმება?" : "Are you sure you want to cancel?")) return;
-      
-      const { error } = await supabase
-        .from('subscriptions')
-        .update({ status: 'cancelled' })
-        .eq('id', subscription.id);
-
-      if (error) {
-          addToast("Error: " + error.message, "error");
-      } else {
+      const { error } = await supabase.from('subscriptions').update({ status: 'cancelled' }).eq('id', subscription.id);
+      if (error) addToast("Error: " + error.message, "error");
+      else {
           setSubscription(prev => ({ ...prev, status: 'cancelled' }));
           addToast(language === 'ka' ? "გამოწერა გაუქმებულია" : "Subscription cancelled", "success");
       }
@@ -198,12 +167,18 @@ export default function ProfileView() {
       setSavingProfile(true);
       let messages = [];
       try {
-          if (newName !== displayName) {
-              const { error } = await supabase.auth.updateUser({ data: { full_name: newName } });
+          const updates = {};
+          if (newName !== displayName) updates.full_name = newName;
+          if (newNickname !== nickname) updates.nickname = newNickname;
+
+          if (Object.keys(updates).length > 0) {
+              const { error } = await supabase.auth.updateUser({ data: updates });
               if (error) throw error;
-              setDisplayName(newName);
-              messages.push(language === 'ka' ? "სახელი განახლდა" : "Name updated");
+              if (updates.full_name) setDisplayName(updates.full_name);
+              if (updates.nickname) setNickname(updates.nickname);
+              messages.push(language === 'ka' ? "პროფილი განახლდა" : "Profile updated");
           }
+
           if (newPassword) {
               if (newPassword.length < 6) throw new Error("Password too short");
               if (newPassword !== confirmPassword) throw new Error("Passwords mismatch");
@@ -237,28 +212,28 @@ export default function ProfileView() {
       finally { setSendingMsg(false); }
   };
 
-  // --- TEXT ---
+  // --- TEXT & RANKS ---
   const t = {
     en: {
-      profileMagical: "Wizard's Profile", profileStandard: "Student Profile",
+      profileMagical: "Wizard's Profile", profileStandard: "Medical Profile",
       xpMagical: "Arcane Knowledge", xpStandard: "Experience Points",
       heartsMagical: "Life Essence", heartsStandard: "Lives",
       regen: "Regenerating in:", full: "Fully Restored", infinite: "Infinite Energy", signOut: "Sign Out",
-      editProfile: "Edit Profile", displayName: "Display Name", changePass: "Change Password",
+      editProfile: "Edit Profile", displayName: "Full Name", nickname: "Magus Name (Nickname)", changePass: "Change Password",
       newPass: "New Password", confPass: "Confirm Password", save: "Save Changes", cancel: "Cancel",
-      billTitle: "Grimoire Subscription", billActive: "Active Plan", billNext: "Next Billing", billCancel: "Cancel Subscription",
+      billTitle: "Subscription Status", billActive: "Active Plan", billNext: "Next Billing", billCancel: "Cancel Subscription",
       billNoSub: "No Active Subscription", billUp: "Upgrade Now",
       secTitle: "Authorized Artifacts", contact: "Revoke a Device", contactTitle: "Petition Archmage", contactDesc: "Request device removal", send: "Send",
       actions: "Emergency Aid", healBtn: "Restore 1 Heart", healCost: "50 XP", fullBtn: "Full Recovery", fullCost: "1 GEL", need: "Need", more: "more"
     },
     ka: {
-      profileMagical: "ჯადოქრის პროფილი", profileStandard: "სტუდენტის პროფილი",
+      profileMagical: "ჯადოქრის პროფილი", profileStandard: "სამედიცინო პროფილი",
       xpMagical: "საიდუმლო ცოდნა", xpStandard: "გამოცდილება",
       heartsMagical: "სასიცოცხლო ესენცია", heartsStandard: "სიცოცხლეები",
       regen: "აღდგენა:", full: "სრულად აღდგენილია", infinite: "უსასრულო ენერგია", signOut: "გასვლა",
-      editProfile: "რედაქტირება", displayName: "სახელი", changePass: "პაროლის შეცვლა",
+      editProfile: "რედაქტირება", displayName: "სრული სახელი", nickname: "მაგუსის სახელი (მეტსახელი)", changePass: "პაროლის შეცვლა",
       newPass: "ახალი პაროლი", confPass: "გაიმეორეთ პაროლი", save: "შენახვა", cancel: "გაუქმება",
-      billTitle: "გამოწერა", billActive: "მიმდინარე გეგმა", billNext: "შემდეგი გადახდა", billCancel: "გაუქმება",
+      billTitle: "გამოწერის სტატუსი", billActive: "მიმდინარე გეგმა", billNext: "შემდეგი გადახდა", billCancel: "გაუქმება",
       billNoSub: "გამოწერა არ გაქვთ", billUp: "გააქტიურება",
       secTitle: "უსაფრთხოება", contact: "მოწყობილობის წაშლა", contactTitle: "მიმართვა არქიმაგს", contactDesc: "მოწყობილობის წაშლის მოთხოვნა", send: "გაგზავნა",
       actions: "დახმარება", healBtn: "1 გული", healCost: "50 XP", fullBtn: "სრული აღდგენა", fullCost: "1 ლარი", need: "გაკლია", more: ""
@@ -266,24 +241,50 @@ export default function ProfileView() {
   };
   const text = t[language] || t.en;
 
+  // Adaptive Rank Display Logic
   const getRankDisplay = () => {
     const titles = {
-        archmage: { label: language==='ka'?"არქიმაგი":"Archmage", color: 'text-purple-500', icon: InfinityIcon },
-        insubstantial: { label: language==='ka'?"ილუზორული":"Insubstantial", color: 'text-fuchsia-400', icon: Ghost },
-        grand_magus: { label: language==='ka'?"დიდი ჯადოქარი":"Grand Magus", color: 'text-amber-500', icon: Crown },
-        magus: { label: language==='ka'?"ჯადოქარი":"Magus", color: 'text-emerald-500', icon: Star },
-        apprentice: { label: language==='ka'?"შეგირდი":"Apprentice", color: 'text-blue-500', icon: Shield }
+        archmage: { 
+            magical: { label: language==='ka'?"არქიმაგი":"Archmage" },
+            standard: { label: language==='ka'?"ადმინისტრატორი":"Administrator" },
+            color: 'text-purple-500', icon: InfinityIcon 
+        },
+        insubstantial: { 
+            magical: { label: language==='ka'?"ილუზორული":"Insubstantial" },
+            standard: { label: language==='ka'?"დამკვირვებელი":"Observer" },
+            color: 'text-fuchsia-400', icon: Ghost 
+        },
+        grand_magus: { 
+            magical: { label: language==='ka'?"დიდი ჯადოქარი":"Grand Magus" },
+            standard: { label: language==='ka'?"მკურნალი ექიმი":"Attending Physician" },
+            color: 'text-amber-500', icon: Crown 
+        },
+        magus: { 
+            magical: { label: language==='ka'?"ჯადოქარი":"Magus" },
+            standard: { label: language==='ka'?"რეზიდენტი":"Resident" },
+            color: 'text-emerald-500', icon: Star 
+        },
+        apprentice: { 
+            magical: { label: language==='ka'?"შეგირდი":"Apprentice" },
+            standard: { label: language==='ka'?"სტუდენტი":"Student" },
+            color: 'text-blue-500', icon: Shield 
+        }
     };
-    return titles[tier] || titles.apprentice;
+    const rank = titles[tier] || titles.apprentice;
+    return {
+        label: isMagical ? rank.magical.label : rank.standard.label,
+        color: rank.color,
+        icon: rank.icon
+    };
   };
   const rankInfo = getRankDisplay();
+  
   const HEAL_COST = 50;
   const canAffordHeal = xp >= HEAL_COST;
   const missingXp = HEAL_COST - xp;
 
-  // Helper to format plan name from ID
   const getPlanName = (planId) => {
-    if(!planId) return language === 'ka' ? "ჯადოქარი" : "Magus";
+    if(!planId) return isMagical ? (language === 'ka' ? "ჯადოქარი" : "Magus") : (language === 'ka' ? "რეზიდენტი" : "Resident");
     if(planId === 'lifetime') return language === 'ka' ? "სამუდამო წვდომა" : "Lifetime Access";
     if(planId === '1_minute') return "Test: 1 Minute";
     if(planId === '1_week') return language === 'ka' ? "1 კვირა" : "1 Week";
@@ -302,7 +303,19 @@ export default function ProfileView() {
             <div className={`w-full max-w-md p-6 rounded-2xl shadow-2xl border-2 ${isMagical ? 'bg-slate-900 border-amber-600 text-amber-50' : 'bg-white border-blue-500 text-slate-900'}`}>
                 <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold flex items-center gap-2"><Edit2 size={20}/>{text.editProfile}</h3><button onClick={()=>setShowEditModal(false)}><X/></button></div>
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
-                    <div><label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.displayName}</label><input type="text" value={newName} onChange={(e)=>setNewName(e.target.value)} className={`w-full p-3 rounded-xl border focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`}/></div>
+                    
+                    {/* Full Name */}
+                    <div>
+                        <label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.displayName}</label>
+                        <input type="text" value={newName} onChange={(e)=>setNewName(e.target.value)} className={`w-full p-3 rounded-xl border focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`}/>
+                    </div>
+
+                    {/* Nickname / Magus Name */}
+                    <div>
+                        <label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.nickname}</label>
+                        <input type="text" value={newNickname} onChange={(e)=>setNewNickname(e.target.value)} className={`w-full p-3 rounded-xl border focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`}/>
+                    </div>
+
                     <div className="pt-2 border-t border-dashed border-gray-500/30">
                         <label className="text-xs font-bold uppercase opacity-70 mb-1 block">{text.changePass}</label>
                         <input type="password" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} className={`w-full p-3 rounded-xl border mb-2 focus:outline-none focus:ring-2 ${isMagical?'bg-slate-800 border-slate-700 focus:ring-amber-500':'bg-slate-50 border-slate-200 focus:ring-blue-500'}`} placeholder={text.newPass}/>
@@ -333,6 +346,18 @@ export default function ProfileView() {
       {/* HEADER */}
       <div className={`relative overflow-hidden rounded-3xl p-8 mb-6 border-2 shadow-2xl ${isMagical ? 'bg-slate-900 border-amber-500/30 text-amber-50' : 'bg-white border-slate-200 text-slate-800'}`}>
         {isMagical && <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-[100px] rounded-full pointer-events-none"></div>}
+        
+        {/* THEME TOGGLE (New Feature) */}
+        <div className="absolute top-4 right-4 z-20">
+            <button 
+                onClick={toggleTheme}
+                className={`p-2 rounded-full border transition-all ${isMagical ? 'bg-slate-800 border-amber-500/50 text-amber-400 hover:bg-slate-700' : 'bg-white border-slate-300 text-blue-600 hover:bg-slate-50'}`}
+                title={isMagical ? "Switch to Standard View" : "Switch to Magical View"}
+            >
+                {isMagical ? <Stethoscope size={20} /> : <Sparkles size={20} />}
+            </button>
+        </div>
+
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
           <div className="relative group">
             <div className={`w-24 h-24 rounded-full border-4 flex items-center justify-center shadow-lg overflow-hidden relative ${isMagical ? 'border-amber-500 bg-slate-800 text-amber-500' : 'border-blue-500 bg-blue-50 text-blue-600'}`}>
@@ -341,14 +366,23 @@ export default function ProfileView() {
             <label className="absolute bottom-0 right-0 p-2 rounded-full cursor-pointer hover:scale-110 shadow-lg bg-white text-slate-900 border border-slate-200"><Camera size={16} /><input type="file" accept="image/*" onChange={uploadAvatar} disabled={uploading} className="hidden"/></label>
           </div>
           <div className="flex-1">
-            <h2 className="text-3xl font-bold mb-2">{isMagical ? text.profileMagical : text.profileStandard}</h2>
-            <div className="flex items-center justify-center md:justify-start gap-3 flex-wrap">
+            <h2 className="text-3xl font-bold mb-1">{isMagical ? text.profileMagical : text.profileStandard}</h2>
+            
+            {/* RANK BADGE */}
+            <div className="flex items-center justify-center md:justify-start gap-3 flex-wrap mt-2">
                 <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-bold border ${isMagical ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
                     <rankInfo.icon size={14} className={rankInfo.color} /><span className={rankInfo.color}>{rankInfo.label}</span>
                 </div>
-                {displayName && <span className="text-xl font-bold">{displayName}</span>}
+                
+                {/* NAME & NICKNAME DISPLAY */}
+                <div className="flex flex-col text-left">
+                    {displayName && <span className="text-xl font-bold leading-none">{displayName}</span>}
+                    {nickname && <span className={`text-sm font-mono opacity-60 ${isMagical ? 'text-amber-400' : 'text-slate-500'}`}>@{nickname}</span>}
+                </div>
+
                 <button onClick={() => setShowEditModal(true)} className={`p-1.5 rounded-full transition-colors ${isMagical ? 'hover:bg-amber-900/30 text-amber-500' : 'hover:bg-blue-100 text-blue-600'}`} title="Edit"><Edit2 size={16} /></button>
             </div>
+            
             <div className="flex items-center justify-center md:justify-start gap-2 mt-4 opacity-70 text-sm"><Mail size={14} />{user?.email}</div>
           </div>
         </div>
