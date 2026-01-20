@@ -12,11 +12,11 @@ export default function PaymentFailure() {
   const [searchParams] = useSearchParams();
   const isMagical = theme === 'magical';
 
-  // DEBUGGER: Get parameters
+  // DEBUGGER
   const debugReason = searchParams.get('reason') || 'unknown';
   const debugOrderId = searchParams.get('order_id') || 'N/A';
 
-  // STATE: "Verifying" mode (to catch false failures)
+  // VERIFICATION STATE
   const [isVerifying, setIsVerifying] = useState(true);
   const checkCount = useRef(0);
 
@@ -28,27 +28,19 @@ export default function PaymentFailure() {
     }
 
     const verifyStatus = async () => {
-        // We check the database 5 times (once per second)
-        // If the webhook arrives during this time, we save the user from the error screen.
         if (checkCount.current >= 5) {
-            setIsVerifying(false); // Time's up, it really failed.
+            setIsVerifying(false); 
             return;
         }
 
-        console.log(`🕵️‍♂️ Double-checking payment status... Attempt ${checkCount.current + 1}`);
+        console.log(`🕵️‍♂️ Double-checking payment... Attempt ${checkCount.current + 1}`);
         
-        const { data } = await supabase
-            .from('profiles')
-            .select('tier')
-            .eq('id', user.id)
-            .single();
+        const { data } = await supabase.from('profiles').select('tier').eq('id', user.id).single();
 
-        // IF WE FIND MAGUS STATUS -> IT WAS A FALSE ALARM!
         if (data && (data.tier === 'magus' || data.tier === 'grand_magus' || data.tier === 'archmage')) {
-            console.log("✨ False Alarm! Payment actually succeeded.");
-            navigate(`/payment-success?order_id=${debugOrderId}`); // Redirect to Success
+            console.log("✨ False Alarm! Payment succeeded.");
+            navigate(`/payment-success?order_id=${debugOrderId}`);
         } else {
-            // Still apprentice... try again in 1 second
             checkCount.current++;
             setTimeout(verifyStatus, 1000);
         }
@@ -58,46 +50,54 @@ export default function PaymentFailure() {
   }, [user, navigate, debugOrderId]);
 
 
-  // --- TEXT CONFIG ---
+  // --- TRANSLATIONS ---
   const t = {
     en: {
-      title: isMagical ? "Spell Fizzled!" : "Payment Failed",
-      desc: isMagical 
-        ? "The arcane energies could not be channeled. Your gold remains safe." 
-        : "The transaction could not be completed. You have not been charged.",
-      reason: "Possible causes: Insufficient funds, bank rejection, or connection loss.",
-      retry: "Cast Again",
-      back: "Retreat to Safety",
-      verifying: "The spell is unstable... Consulting the archives..."
+      titleMag: "Spell Fizzled!",
+      titleStd: "Payment Failed",
+      descMag: "The arcane energies could not be channeled. Your gold remains safe.",
+      descStd: "The transaction could not be completed. You have not been charged.",
+      reasonLabel: "Reason:",
+      reasonMag: "The ley lines are blocked or your mana (funds) is insufficient.",
+      reasonStd: "Possible causes: Insufficient funds, bank rejection, or connection loss.",
+      retry: "Try Again",
+      backMag: "Retreat to Safety",
+      backStd: "Back to Dashboard",
+      verifyingMag: "The spell is unstable... Consulting the archives...",
+      verifyingStd: "Verifying transaction status with the bank..."
     },
     ka: {
-      title: isMagical ? "შელოცვა ჩაიშალა!" : "გადახდა ვერ განხორციელდა",
-      desc: isMagical 
-        ? "ენერგიის არხი გაწყდა. თქვენი ოქრო უსაფრთხოდ არის." 
-        : "ტრანზაქცია ვერ დასრულდა. თანხა არ ჩამოგეჭრათ.",
-      reason: "მიზეზები: არასაკმარისი თანხა, ბანკის უარყოფა ან კავშირის ხარვეზი.",
+      titleMag: "შელოცვა ჩაიშალა!",
+      titleStd: "გადახდა ვერ განხორციელდა",
+      descMag: "ენერგიის არხი გაწყდა. თქვენი ოქრო უსაფრთხოდ არის.",
+      descStd: "ტრანზაქცია ვერ დასრულდა. თანხა არ ჩამოგეჭრათ.",
+      reasonLabel: "მიზეზი:",
+      reasonMag: "მაგიური ხაზები დაბლოკილია ან თქვენი მანა (თანხა) არასაკმარისი.",
+      reasonStd: "მიზეზები: არასაკმარისი თანხა, ბანკის უარყოფა ან კავშირის ხარვეზი.",
       retry: "თავიდან ცდა",
-      back: "უკან დაბრუნება",
-      verifying: "შელოცვა არასტაბილურია... მოწმდება არქივები..."
+      backMag: "უკან დაბრუნება",
+      backStd: "მთავარ გვერდზე",
+      verifyingMag: "შელოცვა არასტაბილურია... მოწმდება არქივები...",
+      verifyingStd: "მიმდინარეობს ტრანზაქციის გადამოწმება..."
     }
   };
 
   const text = language === 'ka' ? t.ka : t.en;
 
-  // --- RENDER: LOADING STATE (The "False Alarm" Shield) ---
+  // --- RENDER: LOADING ---
   if (isVerifying) {
       return (
         <div className={`min-h-screen flex flex-col items-center justify-center p-4 gap-6 ${isMagical ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
             <div className="relative">
-                <div className="absolute inset-0 bg-red-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
-                <Loader2 className="animate-spin text-red-500 relative z-10" size={64} />
+                <div className={`absolute inset-0 blur-xl opacity-20 rounded-full animate-pulse ${isMagical ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                <Loader2 className={`animate-spin relative z-10 ${isMagical ? 'text-red-500' : 'text-blue-600'}`} size={64} />
             </div>
-            <p className="text-lg font-bold animate-pulse opacity-80">{text.verifying}</p>
+            <p className="text-lg font-bold animate-pulse opacity-80">{isMagical ? text.verifyingMag : text.verifyingStd}</p>
         </div>
       );
   }
 
-  // --- RENDER: ACTUAL FAILURE ---
+  // --- RENDER: FAILURE ---
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 ${
       isMagical ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'
@@ -118,31 +118,33 @@ export default function PaymentFailure() {
         </div>
 
         <h1 className="text-3xl font-bold mb-2 text-red-500">
-            {text.title}
+            {isMagical ? text.titleMag : text.titleStd}
         </h1>
         
         <p className={`text-lg mb-4 ${isMagical ? 'text-slate-400' : 'text-slate-600'}`}>
-           {text.desc}
+           {isMagical ? text.descMag : text.descStd}
         </p>
 
         <div className={`p-4 rounded-xl mb-6 flex items-start gap-3 text-left text-sm ${
             isMagical ? 'bg-red-900/10 border border-red-500/20 text-red-200' : 'bg-red-50 border border-red-100 text-red-800'
         }`}>
             <AlertTriangle className="shrink-0 mt-0.5" size={16} />
-            <p>{text.reason}</p>
+            <div>
+                <span className="font-bold block mb-1">{text.reasonLabel}</span>
+                <p>{isMagical ? text.reasonMag : text.reasonStd}</p>
+            </div>
         </div>
 
-        {/* ▼▼▼ DEBUGGER BOX ▼▼▼ */}
-        <div className="mb-6 p-3 bg-black/80 rounded-lg text-xs font-mono text-left border border-slate-700">
-             <div className="flex items-center gap-2 text-slate-400 mb-1">
+        {/* DEBUGGER BOX */}
+        <div className={`mb-6 p-3 rounded-lg text-xs font-mono text-left border ${isMagical ? 'bg-black/80 border-slate-700' : 'bg-slate-100 border-slate-200'}`}>
+             <div className="flex items-center gap-2 opacity-50 mb-1">
                 <Terminal size={12} /> <span>Bank Response Code:</span>
              </div>
-             <div className="text-yellow-400 break-all">
+             <div className="text-yellow-600 font-bold break-all">
                 STATUS: "{debugReason}"
              </div>
-             <div className="text-slate-500 mt-1">Order ID: {debugOrderId.slice(0, 8)}...</div>
+             <div className="opacity-50 mt-1">Order ID: {debugOrderId.slice(0, 8)}...</div>
         </div>
-        {/* ▲▲▲ DEBUGGER BOX ▲▲▲ */}
 
         <div className="flex flex-col gap-3">
             <button 
@@ -166,7 +168,7 @@ export default function PaymentFailure() {
               }`}
             >
               <ArrowLeft size={18} />
-              <span>{text.back}</span>
+              <span>{isMagical ? text.backMag : text.backStd}</span>
             </button>
         </div>
 

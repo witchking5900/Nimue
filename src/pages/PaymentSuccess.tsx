@@ -1,20 +1,86 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Crown, ArrowRight } from 'lucide-react';
+import { Check, Crown, ArrowRight, Shield, Star, Loader2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../supabaseClient';
 
 export default function PaymentSuccess() {
-  const { theme } = useTheme();
+  const { theme, language } = useTheme();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const isMagical = theme === 'magical';
 
-  // 5 წამში ავტომატურად გადავიყვანოთ მთავარ გვერდზე
+  const [purchasedTier, setPurchasedTier] = useState<string | null>(null);
+
+  // 1. Fetch the actual tier to decide what text to show
+  useEffect(() => {
+    if (!user) return;
+    const fetchTier = async () => {
+        const { data } = await supabase.from('profiles').select('tier').eq('id', user.id).single();
+        if (data) setPurchasedTier(data.tier);
+    };
+    fetchTier();
+  }, [user]);
+
+  // 2. Auto-redirect after 6 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       navigate('/');
     }, 6000);
     return () => clearTimeout(timer);
   }, [navigate]);
+
+  // --- TRANSLATIONS ---
+  const t = {
+    en: {
+      titleMag: "Oath Sworn!",
+      titleStd: "Payment Successful!",
+      descMag: "Your powers have awakened. The realm awaits your command.",
+      descStd: "Your subscription is now active. Welcome aboard.",
+      statusLabel: "New Status",
+      
+      // Magus (Standard)
+      rankMag_M: "Magus",
+      rankStd_M: "Resident",
+      
+      // Grand Magus (Lifetime)
+      rankMag_GM: "Grand Magus",
+      rankStd_GM: "Attending Physician",
+
+      btnMag: "Return to Realm",
+      btnStd: "Back to Dashboard"
+    },
+    ka: {
+      titleMag: "ფიცი დადებულია!",
+      titleStd: "გადახდა წარმატებულია!",
+      descMag: "თქვენი ძალები გააქტიურდა. სამყარო გელოდებათ.",
+      descStd: "თქვენი გამოწერა გააქტიურებულია. კეთილი იყოს თქვენი მობრძანება.",
+      statusLabel: "ახალი სტატუსი",
+      
+      // Magus (Standard)
+      rankMag_M: "ჯადოქარი",
+      rankStd_M: "რეზიდენტი",
+
+      // Grand Magus (Lifetime)
+      rankMag_GM: "დიდი ჯადოქარი",
+      rankStd_GM: "მკურნალი ექიმი",
+
+      btnMag: "სამყაროში დაბრუნება",
+      btnStd: "დაბრუნება"
+    }
+  };
+
+  const text = language === 'ka' ? t.ka : t.en;
+
+  // Helper to determine the display title based on tier + theme
+  const getRankTitle = () => {
+      if (purchasedTier === 'grand_magus') {
+          return isMagical ? text.rankMag_GM : text.rankStd_GM;
+      }
+      // Default to Magus if still loading or regular Magus
+      return isMagical ? text.rankMag_M : text.rankStd_M;
+  };
 
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 ${
@@ -24,7 +90,7 @@ export default function PaymentSuccess() {
         isMagical ? 'bg-slate-900 border-amber-500/50' : 'bg-white border-blue-100'
       }`}>
         
-        {/* ანიმაციური ეფექტები */}
+        {/* Animated Top Bar */}
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-emerald-600"></div>
         
         <div className="mb-6 flex justify-center">
@@ -34,24 +100,29 @@ export default function PaymentSuccess() {
         </div>
 
         <h1 className="text-3xl font-bold mb-2">
-            {isMagical ? "ფიცი დადებულია!" : "Payment Successful!"}
+            {isMagical ? text.titleMag : text.titleStd}
         </h1>
         
         <p className={`text-lg mb-8 ${isMagical ? 'text-slate-400' : 'text-slate-600'}`}>
-           {isMagical 
-             ? "თქვენი ძალები გააქტიურდა. სამყარო გელოდებათ." 
-             : "Your subscription is now active. Welcome aboard."}
+           {isMagical ? text.descMag : text.descStd}
         </p>
 
+        {/* Status Box */}
         <div className={`p-4 rounded-xl mb-8 flex items-center gap-4 text-left ${
             isMagical ? 'bg-amber-900/20 border border-amber-500/30' : 'bg-blue-50 border border-blue-100'
         }`}>
             <div className={`p-2 rounded-full ${isMagical ? 'bg-amber-500 text-black' : 'bg-blue-600 text-white'}`}>
-                <Crown size={24} />
+                {/* Icon Logic: Crown for Grand Magus, Star/Shield for others */}
+                {purchasedTier === 'grand_magus' 
+                    ? <Crown size={24} /> 
+                    : (isMagical ? <Star size={24} /> : <Shield size={24} />)
+                }
             </div>
             <div>
-                <p className="text-sm opacity-70">New Status</p>
-                <p className="font-bold text-lg">Magus / Pro Tier</p>
+                <p className="text-xs opacity-70 uppercase tracking-wider">{text.statusLabel}</p>
+                <p className="font-bold text-lg flex items-center gap-2">
+                    {purchasedTier ? getRankTitle() : <Loader2 className="animate-spin" size={16}/>}
+                </p>
             </div>
         </div>
 
@@ -63,7 +134,7 @@ export default function PaymentSuccess() {
             : 'bg-blue-600 hover:bg-blue-700 text-white'
           }`}
         >
-          <span>დაბრუნება</span>
+          <span>{isMagical ? text.btnMag : text.btnStd}</span>
           <ArrowRight size={18} />
         </button>
 
