@@ -5,7 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function NotificationBell() {
-  const { theme, language } = useTheme(); // Get Language
+  const { theme, language } = useTheme(); 
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -13,19 +13,43 @@ export default function NotificationBell() {
   const dropdownRef = useRef(null);
   const isMagical = theme === 'magical';
 
-  // --- TEXT TRANSLATIONS ---
+  // --- 1. UI TRANSLATIONS (Static Text) ---
   const t = {
       title: language === 'ka' ? "შეტყობინებები" : "Notifications",
-      markAll: language === 'ka' ? "წაკითხულად მონიშვნა" : "Mark all read",
+      markAll: language === 'ka' ? "ყველას წაკითხვა" : "Mark all read",
       empty: language === 'ka' ? "ახალი არაფერია..." : "No new whispers...",
-      date: language === 'ka' ? "დღეს" : "Today"
   };
 
-  // --- 1. FETCH FUNCTION ---
+  // --- 2. NOTIFICATION TYPE TRANSLATIONS ---
+  const getTypeLabel = (type) => {
+    const labels = {
+      // Good
+      update: { en: "System Update", ka: "სისტემური განახლება" },
+      xp: { en: "XP Gained", ka: "მიღებული XP" },
+      reply: { en: "New Reply", ka: "ახალი პასუხი" },
+      favorite_update: { en: "Favorite Update", ka: "ფავორიტის განახლება" },
+      amnesty: { en: "Amnesty", ka: "ამნისტია" },
+      bounty: { en: "Bounty Complete", ka: "დავალება შესრულდა" },
+      // Bad
+      ban: { en: "Ban Issued", ka: "ბანი" },
+      strike: { en: "Strike Received", ka: "გაფრთხილება (Strike)" },
+      report: { en: "Report", ka: "რეპორტი" },
+      warning: { en: "Warning", ka: "გაფრთხილება" },
+    };
+
+    // Return translated label or fallback to formatted type string
+    if (labels[type]) {
+      return language === 'ka' ? labels[type].ka : labels[type].en;
+    }
+    return type.replace('_', ' ').toUpperCase();
+  };
+
+  // --- 3. FETCH FUNCTION ---
   const fetchLatest = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // We select * so we get title_ka/message_ka if they exist
       const { data } = await supabase
         .from('notifications')
         .select('*')
@@ -68,7 +92,6 @@ export default function NotificationBell() {
     if (e) e.stopPropagation();
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
-    
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);
   };
 
@@ -85,7 +108,7 @@ export default function NotificationBell() {
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
   };
 
-  // --- CLICK OUTSIDE TO CLOSE ---
+  // --- CLICK OUTSIDE ---
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
@@ -94,13 +117,13 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // --- HELPER: CONFIG (ICONS & COLORS) ---
+  // --- HELPER: CONFIG ---
   const getNotificationConfig = (type) => {
-      // 🟢 GOOD (Green/Emerald/Gold)
+      // 🟢 GOOD
       if (['update', 'xp', 'reply', 'favorite_update', 'amnesty', 'bounty'].includes(type)) {
           let icon = <Info size={14}/>;
           if (type === 'xp') icon = <Zap size={14}/>;
-          if (type === 'update') icon = <BookOpen size={14}/>; // Universal Broadcast
+          if (type === 'update') icon = <BookOpen size={14}/>;
           if (type === 'reply') icon = <MessageCircle size={14}/>;
           if (type === 'favorite_update') icon = <Star size={14}/>;
           if (type === 'bounty') icon = <Shield size={14}/>;
@@ -112,11 +135,11 @@ export default function NotificationBell() {
           };
       }
       
-      // 🔴 BAD (Red)
+      // 🔴 BAD
       if (['ban', 'strike', 'report', 'warning'].includes(type)) {
           let icon = <AlertTriangle size={14}/>;
           if (type === 'ban') icon = <Skull size={14}/>;
-          if (type === 'strike') icon = <Zap size={14}/>; // Strike looks like lightning usually
+          if (type === 'strike') icon = <Zap size={14}/>;
 
           return {
               bg: isMagical ? 'bg-red-900/20 border-red-500/50' : 'bg-red-50 border-red-200',
@@ -125,7 +148,7 @@ export default function NotificationBell() {
           };
       }
       
-      // 🔵 NEUTRAL (Default)
+      // 🔵 NEUTRAL
       return {
           bg: isMagical ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-100',
           text: isMagical ? 'text-slate-300' : 'text-slate-700',
@@ -163,6 +186,14 @@ export default function NotificationBell() {
             ) : (
               notifications.map(n => {
                 const style = getNotificationConfig(n.type);
+                
+                // --- 4. CONTENT SELECTION ---
+                // Try to find Georgian content if language is 'ka', otherwise default to English
+                const displayTitle = (language === 'ka' && n.title_ka) ? n.title_ka : n.title;
+                const displayMessage = (language === 'ka' && n.message_ka) ? n.message_ka : n.message;
+                // Format date based on language
+                const displayDate = new Date(n.created_at).toLocaleDateString(language === 'ka' ? 'ka-GE' : 'en-US');
+
                 return (
                     <div 
                       key={n.id} 
@@ -172,11 +203,11 @@ export default function NotificationBell() {
                       {!n.is_read && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 shadow-sm shadow-red-500" />}
                       
                       <div className={`text-[10px] font-bold uppercase mb-1 flex items-center gap-1 ${style.text}`}>
-                        {style.icon} {n.type.replace('_', ' ')}
+                        {style.icon} {getTypeLabel(n.type)}
                       </div>
-                      <div className={`text-sm mb-1 leading-tight ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>{n.title}</div>
-                      <div className={`text-xs leading-snug ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>{n.message}</div>
-                      <div className="text-[10px] opacity-30 mt-2 text-right font-mono">{new Date(n.created_at).toLocaleDateString()}</div>
+                      <div className={`text-sm mb-1 leading-tight ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>{displayTitle}</div>
+                      <div className={`text-xs leading-snug ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>{displayMessage}</div>
+                      <div className="text-[10px] opacity-30 mt-2 text-right font-mono">{displayDate}</div>
                     </div>
                 );
               })
