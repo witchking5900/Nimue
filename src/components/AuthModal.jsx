@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-// Added Stethoscope (for Phonendoscope) and Check
 import { Lock, Key, Mail, Wand2, Activity, Globe, Scroll, X, ShieldAlert, User, Feather, Stethoscope, Check } from 'lucide-react'; 
 
 function AuthModal() {
@@ -11,9 +10,8 @@ function AuthModal() {
   if (!auth || !themeContext) return null; 
 
   const { signIn, signUp } = auth;
-  const { theme, language, setLanguage, setTheme } = themeContext; // Get setters
+  const { theme, language, setLanguage, setTheme } = themeContext; 
   
-  // --- NEW STATE FOR ONBOARDING FLOW ---
   // view can be: 'language' | 'theme' | 'auth'
   const [view, setView] = useState('language'); 
 
@@ -31,7 +29,7 @@ function AuthModal() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // --- TEXT DICTIONARY (Kept your original text) ---
+  // --- TEXT DICTIONARY ---
   const t = {
     en: {
       titleMagic: isLogin ? "Identify Thyself" : "Inscribe Your Soul",
@@ -117,13 +115,20 @@ function AuthModal() {
     }
   };
 
+  // --- BACKGROUND CONFIG ---
+  // ✅ UPDATED PATH: Points to public/background.jpg
+  const bgImageStyle = { backgroundImage: "url('/background.jpg')" };
+
   // ==========================================
   // VIEW 1: LANGUAGE SELECTION
   // ==========================================
   if (view === 'language') {
     return (
-      <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
-        <div className="w-full max-w-md animate-in zoom-in duration-300">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cover bg-center bg-no-repeat" style={bgImageStyle}>
+        {/* Dark Overlay for readability */}
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+        <div className="w-full max-w-md animate-in zoom-in duration-300 relative z-10">
             <h2 className="text-2xl md:text-3xl font-bold text-center text-white mb-2">Choose your language</h2>
             <h3 className="text-xl md:text-2xl text-center text-slate-400 mb-8 font-serif">აირჩიე ენა</h3>
             
@@ -131,7 +136,7 @@ function AuthModal() {
                 {/* ENGLISH */}
                 <button 
                     onClick={() => handleLanguageSelect('en')}
-                    className="group relative p-6 bg-slate-900 border border-slate-700 hover:border-blue-500 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-blue-900/50 hover:shadow-2xl"
+                    className="group relative p-6 bg-slate-900/80 border border-slate-700 hover:border-blue-500 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-blue-900/50 hover:shadow-2xl backdrop-blur-md"
                 >
                     <span className="text-5xl drop-shadow-lg filter">🇺🇸</span>
                     <span className="text-white font-bold tracking-widest group-hover:text-blue-400 transition-colors">ENGLISH</span>
@@ -140,7 +145,7 @@ function AuthModal() {
                 {/* GEORGIAN */}
                 <button 
                     onClick={() => handleLanguageSelect('ka')}
-                    className="group relative p-6 bg-slate-900 border border-slate-700 hover:border-red-500 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-red-900/50 hover:shadow-2xl"
+                    className="group relative p-6 bg-slate-900/80 border border-slate-700 hover:border-red-500 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-red-900/50 hover:shadow-2xl backdrop-blur-md"
                 >
                     <span className="text-5xl drop-shadow-lg filter">🇬🇪</span>
                     <span className="text-white font-bold tracking-widest group-hover:text-red-400 transition-colors">ქართული</span>
@@ -156,8 +161,10 @@ function AuthModal() {
   // ==========================================
   if (view === 'theme') {
     return (
-      <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
-        <div className="w-full max-w-2xl animate-in slide-in-from-right duration-300">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cover bg-center bg-no-repeat" style={bgImageStyle}>
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+
+        <div className="w-full max-w-2xl animate-in slide-in-from-right duration-300 relative z-10">
             <h2 className="text-2xl md:text-3xl font-bold text-center text-white mb-2">Choose your approach</h2>
             <h3 className="text-xl md:text-2xl text-center text-slate-400 mb-10 font-serif">აირჩიე მიდგომა</h3>
             
@@ -165,28 +172,28 @@ function AuthModal() {
                 {/* STANDARD */}
                 <button 
                     onClick={() => handleThemeSelect('standard')}
-                    className="group relative p-8 bg-white/5 border border-slate-700 hover:border-blue-400 hover:bg-blue-900/10 rounded-2xl flex flex-col items-center gap-6 transition-all hover:scale-105"
+                    className="group relative p-8 bg-white/10 border border-slate-600 hover:border-blue-400 hover:bg-blue-900/40 rounded-2xl flex flex-col items-center gap-6 transition-all hover:scale-105 backdrop-blur-md"
                 >
                     <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center group-hover:rotate-12 transition-transform">
                         <Stethoscope size={40} className="text-blue-600" />
                     </div>
                     <div className="text-center">
                         <div className="text-xl font-bold text-white mb-1">Standard</div>
-                        <div className="text-lg text-slate-400 font-serif">სტანდარტული</div>
+                        <div className="text-lg text-slate-300 font-serif">სტანდარტული</div>
                     </div>
                 </button>
 
                 {/* MAGICAL */}
                 <button 
                     onClick={() => handleThemeSelect('magical')}
-                    className="group relative p-8 bg-black/40 border border-amber-900 hover:border-amber-500 hover:bg-amber-900/20 rounded-2xl flex flex-col items-center gap-6 transition-all hover:scale-105 shadow-[0_0_30px_rgba(245,158,11,0.05)] hover:shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+                    className="group relative p-8 bg-black/60 border border-amber-800 hover:border-amber-500 hover:bg-amber-900/40 rounded-2xl flex flex-col items-center gap-6 transition-all hover:scale-105 shadow-[0_0_30px_rgba(245,158,11,0.05)] hover:shadow-[0_0_30px_rgba(245,158,11,0.2)] backdrop-blur-md"
                 >
-                    <div className="w-20 h-20 bg-amber-900/30 rounded-full flex items-center justify-center group-hover:-rotate-12 transition-transform border border-amber-500/30">
+                    <div className="w-20 h-20 bg-amber-900/40 rounded-full flex items-center justify-center group-hover:-rotate-12 transition-transform border border-amber-500/30">
                         <Wand2 size={40} className="text-amber-500" />
                     </div>
                     <div className="text-center">
                         <div className="text-xl font-bold text-amber-100 mb-1">Magical</div>
-                        <div className="text-lg text-amber-500/60 font-serif">ჯადოსნური</div>
+                        <div className="text-lg text-amber-500/80 font-serif">ჯადოსნური</div>
                     </div>
                 </button>
             </div>
@@ -196,14 +203,15 @@ function AuthModal() {
   }
 
   // ==========================================
-  // VIEW 3: AUTH FORM (Your Existing Code)
+  // VIEW 3: AUTH FORM
   // ==========================================
   return (
-    <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cover bg-center bg-no-repeat" style={bgImageStyle}>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
       
       {/* TERMS MODAL */}
       {showTerms && (
-        <div className="absolute inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+        <div className="absolute inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
             <div className={`max-w-lg w-full p-8 rounded-xl border-2 shadow-2xl relative ${
                 isMagical ? 'bg-slate-900 border-red-900 text-amber-50 shadow-red-900/20' : 'bg-white border-slate-300 text-slate-800'
             }`}>
@@ -226,16 +234,16 @@ function AuthModal() {
       )}
 
       {/* MAIN AUTH CARD */}
-      <div className={`w-full max-w-md p-8 rounded-2xl border-2 shadow-2xl animate-in zoom-in relative ${
-        isMagical ? 'bg-slate-900 border-amber-600/50 text-amber-50' : 'bg-white border-blue-200 text-slate-800'
+      <div className={`w-full max-w-md p-8 rounded-2xl border-2 shadow-2xl animate-in zoom-in relative z-10 ${
+        isMagical ? 'bg-slate-900/90 border-amber-600/50 text-amber-50 backdrop-blur-sm' : 'bg-white/95 border-blue-200 text-slate-800 backdrop-blur-sm'
       }`}>
         
-        {/* Language Toggle (Still here if they want to change it back) */}
+        {/* Language Toggle */}
         <button onClick={toggleLanguage} className={`absolute top-4 right-4 z-50 p-2 rounded-full transition-colors flex items-center gap-2 text-xs font-bold cursor-pointer ${isMagical ? 'bg-slate-800 hover:bg-slate-700 text-amber-500 border border-amber-900/50' : 'bg-slate-100 hover:bg-slate-200 text-blue-600 border border-blue-100'}`}>
           <Globe size={16} /><span>{language === 'en' ? 'EN' : 'GE'}</span>
         </button>
 
-        {/* Back Button to Theme Select (Optional, but good UX) */}
+        {/* Back Button */}
         <button onClick={() => setView('theme')} className={`absolute top-4 left-4 z-50 p-2 rounded-full transition-colors opacity-50 hover:opacity-100 ${isMagical ? 'text-amber-500' : 'text-slate-500'}`}>
              <span className="text-xs font-bold">←</span>
         </button>
