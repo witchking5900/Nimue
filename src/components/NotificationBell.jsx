@@ -1,17 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { Bell, CheckCheck, Zap, Skull, MessageCircle, BookOpen } from 'lucide-react'; // Added icons
+import { Bell, CheckCheck, Zap, Skull, MessageCircle, BookOpen, AlertTriangle, Shield, Star, Info } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function NotificationBell() {
-  const { theme } = useTheme();
+  const { theme, language } = useTheme(); // Get Language
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   const isMagical = theme === 'magical';
+
+  // --- TEXT TRANSLATIONS ---
+  const t = {
+      title: language === 'ka' ? "შეტყობინებები" : "Notifications",
+      markAll: language === 'ka' ? "წაკითხულად მონიშვნა" : "Mark all read",
+      empty: language === 'ka' ? "ახალი არაფერია..." : "No new whispers...",
+      date: language === 'ka' ? "დღეს" : "Today"
+  };
 
   // --- 1. FETCH FUNCTION ---
   const fetchLatest = async () => {
@@ -61,11 +69,7 @@ export default function NotificationBell() {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
     
-    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-    if (error) {
-        alert(`⚠️ DATABASE ERROR:\n${error.message}`);
-        fetchLatest(); 
-    }
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
   };
 
   const handleNotificationClick = (n) => {
@@ -78,11 +82,7 @@ export default function NotificationBell() {
     const { data: { user } } = await supabase.auth.getUser();
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
-    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
-    if (error) {
-        alert(`⚠️ DATABASE ERROR:\n${error.message}`);
-        fetchLatest(); 
-    }
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
   };
 
   // --- CLICK OUTSIDE TO CLOSE ---
@@ -94,24 +94,37 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // --- HELPER: GET STYLES BASED ON TYPE ---
+  // --- HELPER: CONFIG (ICONS & COLORS) ---
   const getNotificationConfig = (type) => {
-      // 🟢 GOOD (Green)
-      if (['xp', 'reply', 'favorite_update', 'amnesty', 'bounty'].includes(type)) {
+      // 🟢 GOOD (Green/Emerald/Gold)
+      if (['update', 'xp', 'reply', 'favorite_update', 'amnesty', 'bounty'].includes(type)) {
+          let icon = <Info size={14}/>;
+          if (type === 'xp') icon = <Zap size={14}/>;
+          if (type === 'update') icon = <BookOpen size={14}/>; // Universal Broadcast
+          if (type === 'reply') icon = <MessageCircle size={14}/>;
+          if (type === 'favorite_update') icon = <Star size={14}/>;
+          if (type === 'bounty') icon = <Shield size={14}/>;
+
           return {
               bg: isMagical ? 'bg-emerald-900/20 border-emerald-500/50' : 'bg-green-50 border-green-200',
               text: isMagical ? 'text-emerald-300' : 'text-green-700',
-              icon: type === 'xp' ? <Zap size={14}/> : <CheckCheck size={14}/>
+              icon: icon
           };
       }
+      
       // 🔴 BAD (Red)
       if (['ban', 'strike', 'report', 'warning'].includes(type)) {
+          let icon = <AlertTriangle size={14}/>;
+          if (type === 'ban') icon = <Skull size={14}/>;
+          if (type === 'strike') icon = <Zap size={14}/>; // Strike looks like lightning usually
+
           return {
               bg: isMagical ? 'bg-red-900/20 border-red-500/50' : 'bg-red-50 border-red-200',
               text: isMagical ? 'text-red-300' : 'text-red-700',
-              icon: <Skull size={14}/>
+              icon: icon
           };
       }
+      
       // 🔵 NEUTRAL (Default)
       return {
           bg: isMagical ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-100',
@@ -128,25 +141,25 @@ export default function NotificationBell() {
       >
         <Bell size={24} />
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full animate-bounce">
+          <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full animate-bounce shadow-lg shadow-red-500/20">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border-2 z-50 animate-in slide-in-from-top-2 ${isMagical ? 'bg-slate-900 border-amber-600 shadow-amber-900/50' : 'bg-white border-slate-200'}`}>
+        <div className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border-2 z-50 animate-in slide-in-from-top-2 duration-200 ${isMagical ? 'bg-slate-900 border-amber-600 shadow-amber-900/50' : 'bg-white border-slate-200'}`}>
           <div className={`p-3 border-b flex justify-between items-center ${isMagical ? 'border-amber-500/30' : 'border-slate-100'}`}>
-            <span className={`font-bold text-sm ${isMagical ? 'text-amber-100' : 'text-slate-800'}`}>Notifications</span>
+            <span className={`font-bold text-sm ${isMagical ? 'text-amber-100' : 'text-slate-800'}`}>{t.title}</span>
             {unreadCount > 0 && (
-                <button onClick={clearAll} className="text-xs flex items-center gap-1 opacity-60 hover:opacity-100 hover:underline">
-                    <CheckCheck size={12}/> Mark all read
+                <button onClick={clearAll} className="text-xs flex items-center gap-1 opacity-60 hover:opacity-100 hover:underline transition-opacity">
+                    <CheckCheck size={12}/> {t.markAll}
                 </button>
             )}
           </div>
           <div className="flex flex-col">
             {notifications.length === 0 ? (
-              <div className={`p-8 text-center text-sm italic ${isMagical ? 'text-slate-500' : 'text-slate-400'}`}>No new whispers...</div>
+              <div className={`p-8 text-center text-sm italic ${isMagical ? 'text-slate-500' : 'text-slate-400'}`}>{t.empty}</div>
             ) : (
               notifications.map(n => {
                 const style = getNotificationConfig(n.type);
@@ -154,16 +167,16 @@ export default function NotificationBell() {
                     <div 
                       key={n.id} 
                       onClick={() => handleNotificationClick(n)}
-                      className={`p-4 border-b cursor-pointer transition-all relative text-left border-l-4 ${style.bg} ${isMagical ? 'hover:bg-white/5' : 'hover:bg-slate-50'} ${!n.is_read ? 'font-semibold' : 'opacity-80'}`}
+                      className={`p-4 border-b cursor-pointer transition-all relative text-left border-l-4 ${style.bg} ${isMagical ? 'hover:bg-white/5' : 'hover:bg-slate-50'} ${!n.is_read ? 'font-semibold' : 'opacity-70 grayscale-[0.3]'}`}
                     >
-                      {!n.is_read && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500" />}
+                      {!n.is_read && <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 shadow-sm shadow-red-500" />}
                       
                       <div className={`text-[10px] font-bold uppercase mb-1 flex items-center gap-1 ${style.text}`}>
                         {style.icon} {n.type.replace('_', ' ')}
                       </div>
                       <div className={`text-sm mb-1 leading-tight ${isMagical ? 'text-slate-200' : 'text-slate-800'}`}>{n.title}</div>
                       <div className={`text-xs leading-snug ${isMagical ? 'text-slate-400' : 'text-slate-500'}`}>{n.message}</div>
-                      <div className="text-[10px] opacity-30 mt-2 text-right">{new Date(n.created_at).toLocaleDateString()}</div>
+                      <div className="text-[10px] opacity-30 mt-2 text-right font-mono">{new Date(n.created_at).toLocaleDateString()}</div>
                     </div>
                 );
               })

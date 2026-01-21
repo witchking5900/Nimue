@@ -30,7 +30,7 @@ export default function InscriptionManager() {
 
     const { data: insc } = await supabase
       .from('inscriptions') 
-      .select('*, categories(title)') 
+      .select('*, categories(title, slug)') 
       .order('created_at', { ascending: false });
     
     if (insc) setDbInscriptions(insc);
@@ -50,22 +50,14 @@ export default function InscriptionManager() {
       let kaText = "";
 
       testData.forEach((block, index) => {
-          // Add spacing if not first block
           if (index > 0) { enText += "\n\n"; kaText += "\n\n"; }
-
-          // Questions
           enText += `//// ${safeGet(block.question, 'en')}`;
           kaText += `//// ${safeGet(block.question, 'ka')}`;
 
-          // Options
           block.options.forEach(opt => {
               const prefix = opt.id === block.correctId ? "//" : "///";
-              
-              // English Line
               enText += `\n${prefix} ${safeGet(opt.text, 'en')}`;
               if (safeGet(opt.feedback, 'en')) enText += ` ## ${safeGet(opt.feedback, 'en')}`;
-
-              // Georgian Line
               kaText += `\n${prefix} ${safeGet(opt.text, 'ka')}`;
               if (safeGet(opt.feedback, 'ka')) kaText += ` ## ${safeGet(opt.feedback, 'ka')}`;
           });
@@ -126,84 +118,56 @@ export default function InscriptionManager() {
     }
   };
 
-  // 2. PARSE SINGLE TEXT BLOCK (Reuse your logic)
+  // 2. PARSE SINGLE LANG
   const parseSingleLang = (text) => {
     if (!text.trim()) return [];
-    
     const blocks = text.split('////').filter(b => b.trim().length > 0);
-    
     return blocks.map(block => {
       const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const questionText = lines[0]; // First line is question
-      
+      const questionText = lines[0];
       const options = [];
-      let correctIndex = -1; // We track correct index to match IDs later
-
-      // Process options starting from line 1
+      let correctIndex = -1;
       let optCounter = 0;
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
         let rawContent = "";
         let isCorrect = false;
-
-        if (line.startsWith('// ')) {
-            isCorrect = true;
-            rawContent = line.replace('// ', '');
-        } else if (line.startsWith('/// ')) {
-            isCorrect = false;
-            rawContent = line.replace('/// ', '');
-        } else {
-            continue; 
-        }
-
+        if (line.startsWith('// ')) { isCorrect = true; rawContent = line.replace('// ', ''); } 
+        else if (line.startsWith('/// ')) { isCorrect = false; rawContent = line.replace('/// ', ''); } 
+        else { continue; }
         const feedbackSplit = rawContent.split('##');
         const answerText = feedbackSplit[0]?.trim() || "";
         const feedbackText = feedbackSplit[1]?.trim() || "";
-
         if (isCorrect) correctIndex = optCounter;
-
         options.push({ text: answerText, feedback: feedbackText });
         optCounter++;
       }
-
       return { question: questionText, options, correctIndex };
     });
   };
 
-  // 3. MERGE EN AND KA PARSED DATA
+  // 3. MERGE
   const mergeLanguages = (enData, kaData) => {
       const merged = [];
       const count = Math.max(enData.length, kaData.length);
-
       for (let i = 0; i < count; i++) {
           const enBlock = enData[i] || { question: "", options: [], correctIndex: -1 };
           const kaBlock = kaData[i] || { question: "", options: [], correctIndex: -1 };
-
           const blockId = crypto.randomUUID();
           const mergedOptions = [];
           let correctId = null;
-
-          // Merge Options (assuming same order)
           const optCount = Math.max(enBlock.options.length, kaBlock.options.length);
-          
           for (let j = 0; j < optCount; j++) {
               const enOpt = enBlock.options[j] || { text: "", feedback: "" };
               const kaOpt = kaBlock.options[j] || { text: "", feedback: "" };
-              
               const optId = `opt_${crypto.randomUUID().slice(0,8)}`;
-              
               mergedOptions.push({
                   id: optId,
                   text: { en: enOpt.text, ka: kaOpt.text },
                   feedback: { en: enOpt.feedback, ka: kaOpt.feedback }
               });
-
-              // If this index was marked correct in EITHER lang, mark it correct here
-              if (enBlock.correctIndex === j || kaBlock.correctIndex === j) {
-                  correctId = optId;
-              }
+              if (enBlock.correctIndex === j || kaBlock.correctIndex === j) { correctId = optId; }
           }
-
           merged.push({
               id: blockId,
               question: { en: enBlock.question, ka: kaBlock.question },
@@ -219,7 +183,9 @@ export default function InscriptionManager() {
     setLoading(true);
 
     let finalCategoryId = selectedCat;
+    let finalCategoryName = "";
 
+    // 1. Handle New Category Creation
     if (isCreatingCat && newCatName) {
         const slug = newCatName.toLowerCase().replace(/\s+/g, '-');
         const { data, error } = await supabase.from('categories').insert({
@@ -232,14 +198,18 @@ export default function InscriptionManager() {
         
         if (error) { alert("Error: " + error.message); setLoading(false); return; }
         finalCategoryId = data[0].id;
+        finalCategoryName = newCatName;
         
         const { data: newCats } = await supabase.from('categories').select('*').order('slug');
         if (newCats) setCategories(newCats);
+    } else {
+        // Find existing category name for notification
+        const cat = categories.find(c => c.id === selectedCat);
+        if (cat) finalCategoryName = cat.title?.en?.standard || "Theory";
     }
 
     if (!finalCategoryId) { alert("Select a category!"); setLoading(false); return; }
 
-    // PARSE AND MERGE
     const parsedEn = parseSingleLang(rawEn);
     const parsedKa = parseSingleLang(rawKa);
     const finalTestData = mergeLanguages(parsedEn, parsedKa);
@@ -257,14 +227,36 @@ export default function InscriptionManager() {
       test_data: finalTestData 
     };
 
-    const query = editingId 
-        ? supabase.from('inscriptions').update(payload).eq('id', editingId)
-        : supabase.from('inscriptions').insert(payload);
+    let error;
+    let savedData;
 
-    const { error } = await query;
+    if (editingId) {
+        const { error: err, data } = await supabase.from('inscriptions').update(payload).eq('id', editingId).select().single();
+        error = err;
+        savedData = data;
+    } else {
+        const { error: err, data } = await supabase.from('inscriptions').insert(payload).select().single();
+        error = err;
+        savedData = data;
+    }
 
     if (error) alert('Error: ' + error.message);
     else {
+      // ▼▼▼ UNIVERSAL BROADCAST (THEORY/INSCRIPTION) ▼▼▼
+      if (!editingId && savedData) {
+          try {
+              console.log("Broadcasting Theory Notification...");
+              await supabase.rpc('universal_broadcast', {
+                  p_category: finalCategoryName,
+                  p_master_tag: 'Theory', // Master Tag for Theory/Inscription
+                  p_title: `New Theory: ${finalCategoryName}`,
+                  p_message: `New Inscription Unlocked: ${savedData.title.en.standard}`,
+                  p_link: `/?inscription=${savedData.id}`
+              });
+          } catch (err) { console.error("Notification Error:", err); }
+      }
+      // ▲▲▲ END UPDATE ▲▲▲
+
       alert(editingId ? 'Updated!' : 'Created!');
       handleCancelEdit(); 
       fetchData(); 

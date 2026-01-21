@@ -69,6 +69,8 @@ export default function ProfileView() {
             .from('subscriptions')
             .select('*')
             .eq('user_id', user.id)
+            // Filter: Only look for ACTUAL Ranks (Ignore bells/hearts)
+            .in('tier', ['magus', 'grand_magus', 'archmage', 'insubstantial']) 
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -105,21 +107,47 @@ export default function ProfileView() {
   useEffect(() => {
       if (!subscription) return;
       if (!subscription.current_period_end) { setSubCountdown("LIFETIME"); return; }
-      const updateCountdown = () => {
+      
+      const updateCountdown = async () => {
           const now = new Date().getTime();
           const target = new Date(subscription.current_period_end).getTime();
           const diff = target - now;
-          if (diff <= 0) { setSubCountdown("EXPIRED"); return; }
+          
+          if (diff <= 0) { 
+              setSubCountdown("EXPIRED"); 
+              
+              // 🔥 AUTO-DOWNGRADE TRIGGER (SECURE VERSION) 🔥
+              if (subscription.status === 'active') {
+                  console.log("⏳ Expiring subscription...");
+                  try {
+                      // Call the SECURE DB FUNCTION (Bypasses RLS)
+                      const { error } = await supabase.rpc('expire_user_subscription', { 
+                          target_user_id: user.id 
+                      });
+                      
+                      if (!error) {
+                          // Update local state and reload to show Apprentice View
+                          setSubscription(prev => ({ ...prev, status: 'expired' }));
+                          window.location.reload();
+                      } else {
+                          console.error("RPC Error:", error);
+                      }
+                  } catch (e) { console.error("Downgrade error", e); }
+              }
+              return; 
+          }
+          
           const d = Math.floor(diff / (1000 * 60 * 60 * 24));
           const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
           const s = Math.floor((diff % (1000 * 60)) / 1000);
           setSubCountdown(`${d}:${h < 10 ? '0' + h : h}:${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`);
       };
+      
       updateCountdown(); 
       const timer = setInterval(updateCountdown, 1000);
       return () => clearInterval(timer);
-  }, [subscription]);
+  }, [subscription, user.id]);
 
   // --- HANDLERS ---
   const handleHeal = () => {

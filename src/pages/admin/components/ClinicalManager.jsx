@@ -254,9 +254,13 @@ export default function ClinicalManager() {
       title: titles,
       patient_data: patientData,
       steps: finalSteps,
-      xp_reward: 150,
       category: category 
     };
+
+    // 🔥 FIX: GENERATE ID MANUALLY IF CREATING (Solves the "null id" error)
+    if (!editingId) {
+        payload.id = crypto.randomUUID();
+    }
 
     let error;
     let savedData; 
@@ -274,22 +278,22 @@ export default function ClinicalManager() {
     if (error) {
       alert('Error: ' + error.message);
     } else {
+      
+      // ▼▼▼ UNIVERSAL BROADCAST ▼▼▼
       if (!editingId && savedData) {
         try {
-            const { data: subs } = await supabase.from('subscriptions').select('user_id').in('category', [category, 'Clinical']);
-            if (subs && subs.length > 0) {
-                const uniqueUserIds = [...new Set(subs.map(s => s.user_id))];
-                const notifications = uniqueUserIds.map(userId => ({
-                    user_id: userId,
-                    type: 'update', 
-                    title: `New Trial of Souls: ${category}`,
-                    message: `New case available: ${savedData.title.en}`,
-                    link: `/?trial=${savedData.id}` 
-                }));
-                await supabase.from('notifications').insert(notifications);
-            }
+            console.log("Broadcasting Clinical Notification...");
+            await supabase.rpc('universal_broadcast', {
+                p_category: category,
+                p_master_tag: 'Clinical', 
+                p_title: `New Clinical Case: ${category}`,
+                p_message: `New case available: ${savedData.title.en}`,
+                p_link: `/?trial=${savedData.id}`
+            });
         } catch (err) { console.error("Notification Error:", err); }
       }
+      // ▲▲▲ END BROADCAST ▲▲▲
+
       alert(editingId ? 'Case Updated!' : 'Case Created!');
       handleCancelEdit(); 
       fetchData(); 
