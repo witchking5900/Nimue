@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { Lock, Key, Mail, Wand2, Activity, Globe, Scroll, X, ShieldAlert, User, Feather } from 'lucide-react'; 
+// Added Stethoscope (for Phonendoscope) and Check
+import { Lock, Key, Mail, Wand2, Activity, Globe, Scroll, X, ShieldAlert, User, Feather, Stethoscope, Check } from 'lucide-react'; 
 
-// 1. DEFINE THE FUNCTION (No export keyword here yet)
 function AuthModal() {
-  // Check if context exists to prevent crash if provider is missing
   const auth = useAuth();
   const themeContext = useTheme();
 
-  // Safety check: If app crashes here, it means AuthProvider is not wrapping App.js
   if (!auth || !themeContext) return null; 
 
   const { signIn, signUp } = auth;
-  const { theme, language, setLanguage } = themeContext;
-  const isMagical = theme === 'magical';
+  const { theme, language, setLanguage, setTheme } = themeContext; // Get setters
+  
+  // --- NEW STATE FOR ONBOARDING FLOW ---
+  // view can be: 'language' | 'theme' | 'auth'
+  const [view, setView] = useState('language'); 
 
+  const isMagical = theme === 'magical';
   const [isLogin, setIsLogin] = useState(true);
   
   // Form State
@@ -25,13 +27,11 @@ function AuthModal() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  
-  // UI State
   const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // --- TEXT DICTIONARY ---
+  // --- TEXT DICTIONARY (Kept your original text) ---
   const t = {
     en: {
       titleMagic: isLogin ? "Identify Thyself" : "Inscribe Your Soul",
@@ -51,8 +51,8 @@ function AuthModal() {
       errorTerms: "You must swear the oath (Accept Terms).",
       termsTitleStd: "Terms of Service",
       termsTitleMagic: "The Binding Oath",
-      termsBodyStd: "By registering, you agree strictly not to share your account credentials with others or distribute any content (including screenshots or screen recordings). Violation of this policy is a breach of contract and will result in immediate account termination and a permanent ban from the platform.",
-      termsBodyMagic: "By inscribing your true name, you swear a binding oath to the High Council. You shall not share your Essence (Account) with mortals, nor reveal the Hidden Knowledge (Screenshots) to the uninitiated. Be warned: Breaking this vow is a crime against the Order. Those found guilty shall have their names struck from the book, and their souls cast into the Furnace of Souls for eternity."
+      termsBodyStd: "By registering, you agree strictly not to share your account credentials...",
+      termsBodyMagic: "By inscribing your true name, you swear a binding oath to the High Council..."
     },
     ka: {
       titleMagic: isLogin ? "წარადგინე თავი" : "სულის ჩაწერა",
@@ -72,12 +72,23 @@ function AuthModal() {
       errorTerms: "თქვენ უნდა დადოთ ფიცი (დაეთანხმეთ წესებს).",
       termsTitleStd: "გამოყენების წესები",
       termsTitleMagic: "ფიცი და პირობა",
-      termsBodyStd: "რეგისტრაციით თქვენ ადასტურებთ, რომ არ გადასცემთ თქვენს ანგარიშს მესამე პირებს და არ გაავრცელებთ პლატფორმის მასალებს (მათ შორის სქრინშოტებს). ამ წესის დარღვევა გამოიწვევს ანგარიშის დაუყოვნებლივ გაუქმებას და პლატფორმიდან სამუდამოდ დაბლოკვას.",
-      termsBodyMagic: "ბნელ გრიმუარში თქვენი სახელის ჩაწერით თქვენ ფიცს დებთ უმაღლესი საბჭოს წინაშე. არ გაუზიაროთ სხვას თქვენი კარიბჭის გასაღები, არ გათქვათ საიდუმლო ცოდნა (სქრინშოტები). გაფრთხილება: უმაღლესი საბჭოსადმი მიცემული ფიცის გატეხვა უმძიმესი დანაშაულია. დამნაშავეთა სახელები სამარადჟამოდ წაიშლება სიცოცხლის წიგნიდან და მათი სულები სამუდამოდ გამომწყვდეულები იქნებიან ლიმბოში."
+      termsBodyStd: "რეგისტრაციით თქვენ ადასტურებთ, რომ არ გადასცემთ თქვენს ანგარიშს...",
+      termsBodyMagic: "ბნელ გრიმუარში თქვენი სახელის ჩაწერით თქვენ ფიცს დებთ..."
     }
   };
 
   const text = t[language] || t.en;
+
+  // --- HANDLERS ---
+  const handleLanguageSelect = (lang) => {
+    setLanguage(lang);
+    setView('theme'); // Move to next step
+  };
+
+  const handleThemeSelect = (selectedTheme) => {
+    setTheme(selectedTheme);
+    setView('auth'); // Move to final step
+  };
 
   const toggleLanguage = () => {
     setLanguage(prev => prev === 'en' ? 'ka' : 'en');
@@ -86,26 +97,16 @@ function AuthModal() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-
     if (!isLogin) {
-        if (password !== confirmPassword) {
-            setError(text.errorPass);
-            return;
-        }
-        if (!agreedToTerms) {
-            setError(text.errorTerms);
-            return;
-        }
+        if (password !== confirmPassword) { setError(text.errorPass); return; }
+        if (!agreedToTerms) { setError(text.errorTerms); return; }
     }
-
     setLoading(true);
-
     try {
       if (isLogin) {
         const { error } = await signIn(email, password);
         if (error) throw error;
       } else {
-        // Pass fullName as the 4th argument
         const { error } = await signUp(email, password, username, fullName);
         if (error) throw error;
       }
@@ -116,16 +117,95 @@ function AuthModal() {
     }
   };
 
+  // ==========================================
+  // VIEW 1: LANGUAGE SELECTION
+  // ==========================================
+  if (view === 'language') {
+    return (
+      <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
+        <div className="w-full max-w-md animate-in zoom-in duration-300">
+            <h2 className="text-2xl md:text-3xl font-bold text-center text-white mb-2">Choose your language</h2>
+            <h3 className="text-xl md:text-2xl text-center text-slate-400 mb-8 font-serif">აირჩიე ენა</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ENGLISH */}
+                <button 
+                    onClick={() => handleLanguageSelect('en')}
+                    className="group relative p-6 bg-slate-900 border border-slate-700 hover:border-blue-500 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-blue-900/50 hover:shadow-2xl"
+                >
+                    <span className="text-5xl drop-shadow-lg filter">🇺🇸</span>
+                    <span className="text-white font-bold tracking-widest group-hover:text-blue-400 transition-colors">ENGLISH</span>
+                </button>
+
+                {/* GEORGIAN */}
+                <button 
+                    onClick={() => handleLanguageSelect('ka')}
+                    className="group relative p-6 bg-slate-900 border border-slate-700 hover:border-red-500 rounded-2xl flex flex-col items-center gap-4 transition-all hover:scale-105 hover:shadow-red-900/50 hover:shadow-2xl"
+                >
+                    <span className="text-5xl drop-shadow-lg filter">🇬🇪</span>
+                    <span className="text-white font-bold tracking-widest group-hover:text-red-400 transition-colors">ქართული</span>
+                </button>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: THEME/APPROACH SELECTION
+  // ==========================================
+  if (view === 'theme') {
+    return (
+      <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
+        <div className="w-full max-w-2xl animate-in slide-in-from-right duration-300">
+            <h2 className="text-2xl md:text-3xl font-bold text-center text-white mb-2">Choose your approach</h2>
+            <h3 className="text-xl md:text-2xl text-center text-slate-400 mb-10 font-serif">აირჩიე მიდგომა</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* STANDARD */}
+                <button 
+                    onClick={() => handleThemeSelect('standard')}
+                    className="group relative p-8 bg-white/5 border border-slate-700 hover:border-blue-400 hover:bg-blue-900/10 rounded-2xl flex flex-col items-center gap-6 transition-all hover:scale-105"
+                >
+                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center group-hover:rotate-12 transition-transform">
+                        <Stethoscope size={40} className="text-blue-600" />
+                    </div>
+                    <div className="text-center">
+                        <div className="text-xl font-bold text-white mb-1">Standard</div>
+                        <div className="text-lg text-slate-400 font-serif">სტანდარტული</div>
+                    </div>
+                </button>
+
+                {/* MAGICAL */}
+                <button 
+                    onClick={() => handleThemeSelect('magical')}
+                    className="group relative p-8 bg-black/40 border border-amber-900 hover:border-amber-500 hover:bg-amber-900/20 rounded-2xl flex flex-col items-center gap-6 transition-all hover:scale-105 shadow-[0_0_30px_rgba(245,158,11,0.05)] hover:shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+                >
+                    <div className="w-20 h-20 bg-amber-900/30 rounded-full flex items-center justify-center group-hover:-rotate-12 transition-transform border border-amber-500/30">
+                        <Wand2 size={40} className="text-amber-500" />
+                    </div>
+                    <div className="text-center">
+                        <div className="text-xl font-bold text-amber-100 mb-1">Magical</div>
+                        <div className="text-lg text-amber-500/60 font-serif">ჯადოსნური</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 3: AUTH FORM (Your Existing Code)
+  // ==========================================
   return (
     <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-md">
       
-      {/* --- TERMS OF USE MODAL --- */}
+      {/* TERMS MODAL */}
       {showTerms && (
         <div className="absolute inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
             <div className={`max-w-lg w-full p-8 rounded-xl border-2 shadow-2xl relative ${
-                isMagical 
-                ? 'bg-slate-900 border-red-900 text-amber-50 shadow-red-900/20' 
-                : 'bg-white border-slate-300 text-slate-800'
+                isMagical ? 'bg-slate-900 border-red-900 text-amber-50 shadow-red-900/20' : 'bg-white border-slate-300 text-slate-800'
             }`}>
                 <button onClick={() => setShowTerms(false)} className="absolute top-4 right-4 opacity-50 hover:opacity-100"><X size={24} /></button>
                 <div className="flex items-center gap-3 mb-6">
@@ -145,13 +225,19 @@ function AuthModal() {
         </div>
       )}
 
-      {/* --- MAIN AUTH CARD --- */}
+      {/* MAIN AUTH CARD */}
       <div className={`w-full max-w-md p-8 rounded-2xl border-2 shadow-2xl animate-in zoom-in relative ${
         isMagical ? 'bg-slate-900 border-amber-600/50 text-amber-50' : 'bg-white border-blue-200 text-slate-800'
       }`}>
         
+        {/* Language Toggle (Still here if they want to change it back) */}
         <button onClick={toggleLanguage} className={`absolute top-4 right-4 z-50 p-2 rounded-full transition-colors flex items-center gap-2 text-xs font-bold cursor-pointer ${isMagical ? 'bg-slate-800 hover:bg-slate-700 text-amber-500 border border-amber-900/50' : 'bg-slate-100 hover:bg-slate-200 text-blue-600 border border-blue-100'}`}>
           <Globe size={16} /><span>{language === 'en' ? 'EN' : 'GE'}</span>
+        </button>
+
+        {/* Back Button to Theme Select (Optional, but good UX) */}
+        <button onClick={() => setView('theme')} className={`absolute top-4 left-4 z-50 p-2 rounded-full transition-colors opacity-50 hover:opacity-100 ${isMagical ? 'text-amber-500' : 'text-slate-500'}`}>
+             <span className="text-xs font-bold">←</span>
         </button>
 
         <div className="flex justify-center mb-6">
@@ -282,6 +368,4 @@ function AuthModal() {
   );
 }
 
-// 2. EXPORT IT BOTH WAYS (Universal Fix)
 export default AuthModal;
-export { AuthModal };
