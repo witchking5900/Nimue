@@ -191,7 +191,11 @@ export function AuthProvider({ children }) {
     return await supabase.auth.signInWithPassword({ email, password });
   };
 
+  // ▼▼▼ THE ONLY CHANGED FUNCTION ▼▼▼
   const signUp = async (email, password, username, fullName) => {
+    // 1. Get the current URL (e.g. https://nimue.ge or http://localhost:5173)
+    const origin = window.location.origin;
+
     return await supabase.auth.signUp({
       email,
       password,
@@ -202,10 +206,13 @@ export function AuthProvider({ children }) {
           tier: 'apprentice', 
           hearts: 5,
           xp: 0
-        }
+        },
+        // 2. CRITICAL: Tell Supabase where to send the user after they click the link
+        emailRedirectTo: `${origin}/`, 
       }
     });
   };
+  // ▲▲▲ END OF CHANGE ▲▲▲
 
   const signOut = async () => {
     if (user && deviceId) {

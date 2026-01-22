@@ -29,7 +29,8 @@ import PricingPage from './pages/PricingPage';
 import SecurityManager from './pages/admin/components/SecurityManager';
 import ExpirationBanner from './components/ExpirationBanner';
 import PaymentSuccess from './pages/PaymentSuccess';
-import PaymentFailure from './pages/PaymentFailure'; // <--- NEW IMPORT
+import PaymentFailure from './pages/PaymentFailure';
+import UpdatePassword from './pages/UpdatePassword'; // <--- NEW IMPORT ADDED HERE
 import About from './pages/About';
 import Legal from './pages/Legal';
 import Footer from './components/Footer';
@@ -283,6 +284,9 @@ export default function App() {
                 {/* ▼▼▼ NEW PAYMENT ROUTES ▼▼▼ */}
                 <Route path="/payment-success" element={<PaymentSuccess />} />
                 <Route path="/payment-fail" element={<PaymentFailure />} />
+                
+                {/* ▼▼▼ PASSWORD UPDATE ROUTE ADDED HERE ▼▼▼ */}
+                <Route path="/update-password" element={<UpdatePassword />} />
 
                 <Route path="/pricing" element={
                     <>
