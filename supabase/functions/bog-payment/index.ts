@@ -5,31 +5,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// ⚠️ CRITICAL: PRODUCTION URLS ⚠️
+const BOG_AUTH_URL = 'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token'
+const BOG_ORDER_URL = 'https://api.bog.ge/payments/v1/ecommerce/orders'
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const CLIENT_ID = Deno.env.get('BOG_CLIENT_ID') || '10000067'
-  const CLIENT_SECRET = Deno.env.get('BOG_CLIENT_SECRET') || 'In5caljru5lc'
-  const BOG_AUTH_URL = 'https://oauth2-sandbox.bog.ge/auth/realms/bog/protocol/openid-connect/token'
-  const BOG_ORDER_URL = 'https://api-sandbox.bog.ge/payments/v1/ecommerce/orders'
-  const CALLBACK_URL = Deno.env.get('BOG_CALLBACK_URL') || 'https://eqrodswdgbdkpjwfnefb.supabase.co/functions/v1/bog-payment'
-  const FRONTEND_URL = Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'
+  // 1. GET SECRETS (From Supabase Vault)
+  const CLIENT_ID = Deno.env.get('BOG_CLIENT_ID')
+  const CLIENT_SECRET = Deno.env.get('BOG_SECRET') // Matches your Dashboard
+  const FRONTEND_URL = Deno.env.get('APP_DOMAIN')  // Matches your Dashboard
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
   const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  
+  // Construct Callback URL dynamically to avoid hardcoding
+  // (Or fallback to your specific project URL if env var is missing)
+  const CALLBACK_URL = Deno.env.get('BOG_CALLBACK_URL') || `${SUPABASE_URL}/functions/v1/bog-payment`
 
   const reqUrl = new URL(req.url)
 
-  // 1. GET REDIRECT (UPDATED WITH DEBUGGER LOGIC)
+  // --- A. HANDLE REDIRECT (Bank -> Here -> Frontend) ---
   if (req.method === 'GET') {
-    // Grab the outcome (e.g., 'fail', 'completed') and order_id from the Bank's URL
     const outcome = reqUrl.searchParams.get('outcome') || 'unknown';
     const order_id = reqUrl.searchParams.get('order_id') || '';
     
-    // Check if the outcome is in our "Good List"
+    // Check outcome
     const isSuccess = ['success', 'win', 'completed', 'approved'].includes(outcome.toLowerCase());
     
-    // ▼▼▼ THE DEBUGGER FIX ▼▼▼
-    // Pass the 'reason' and 'order_id' to the frontend pages
+    // Redirect User to your Website
     const target = isSuccess 
       ? `${FRONTEND_URL}/payment-success?order_id=${order_id}` 
       : `${FRONTEND_URL}/payment-fail?reason=${outcome}&order_id=${order_id}`;
@@ -43,7 +47,7 @@ serve(async (req) => {
       console.error("Failed to parse JSON body:", e)
     }
 
-    // 2. WEBHOOK (POST) - UPDATE DB
+    // --- B. WEBHOOK (Bank Updates Status) ---
     if (body.order_id || body.status || body.event) {
       console.log("=== WEBHOOK RECEIVED ===")
       
@@ -57,9 +61,8 @@ serve(async (req) => {
       if (status === 'completed' && userId && SUPABASE_URL && SUPABASE_KEY) {
         console.log("✅ Payment completed, upgrading user...")
         
-        // --- CALCULATE DURATION ---
+        // Calculate Expiry
         let expiry = null; 
-        
         if (period !== 'lifetime') {
             if (period === '1_minute') {
                 expiry = new Date(Date.now() + 60 * 1000).toISOString(); 
@@ -69,16 +72,13 @@ serve(async (req) => {
                 if (period === '1_month') days = 30;
                 if (period === '6_month') days = 180;
                 if (period === '12_month') days = 365;
-                
                 expiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
             }
         }
 
         const newTier = period === 'lifetime' ? 'grand_magus' : 'magus';
 
-        console.log(`Upgrading to ${newTier}, expires: ${expiry ? expiry : 'NEVER (Lifetime)'}`)
-
-        // A. UPDATE PROFILE 
+        // 1. Update Profile
         await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
           method: 'PATCH',
           headers: { 
@@ -94,7 +94,7 @@ serve(async (req) => {
           }) 
         })
         
-        // B. UPSERT SUBSCRIPTION
+        // 2. Log Subscription
         await fetch(`${SUPABASE_URL}/rest/v1/subscriptions`, {
           method: 'POST',
           headers: { 
@@ -111,23 +111,24 @@ serve(async (req) => {
             current_period_start: new Date().toISOString(),
             current_period_end: expiry, 
             updated_at: new Date().toISOString()
-          })
+          }) 
         })
 
-        console.log("=== WEBHOOK PROCESSING COMPLETE ===")
+        console.log("=== WEBHOOK COMPLETE ===")
       }
-      
       return new Response("OK", { status: 200, headers: corsHeaders })
     }
 
-    // 3. CREATE ORDER (POST)
+    // --- C. CREATE ORDER (Frontend asks for Link) ---
     if (body.action === 'create_order') {
       console.log("=== CREATE ORDER REQUEST ===")
       const amount = Number(body.amount || 10)
       const userId = body.user_id || 'unknown'
       const period = body.period || '1_month'
 
+      // Encode Secrets (BOG needs Basic Auth for Token)
       const authString = btoa(unescape(encodeURIComponent(`${CLIENT_ID}:${CLIENT_SECRET}`)))
+      
       const tokenResp = await fetch(BOG_AUTH_URL, {
         method: 'POST',
         headers: { 
@@ -148,6 +149,7 @@ serve(async (req) => {
       const tokenData = await tokenResp.json()
 
       const externalId = crypto.randomUUID()
+      // Attach metadata to callback URL so the Webhook knows WHO paid
       const smartCallbackUrl = `${CALLBACK_URL}?user_id=${userId}&period=${period}`
       
       const payload = {
@@ -192,13 +194,6 @@ serve(async (req) => {
 
       const link = orderData._links?.redirect?.href || orderData.redirect_links?.success || orderData.payment_url
 
-      if (!link) {
-        return new Response(JSON.stringify({ error: "No payment link found" }), { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        })
-      }
-
       return new Response(JSON.stringify({ payment_url: link }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
@@ -211,7 +206,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("💥 Server error:", error)
-    return new Response(JSON.stringify({ error: error.message, stack: error.stack }), { 
+    return new Response(JSON.stringify({ error: error.message }), { 
       status: 200, 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     })
