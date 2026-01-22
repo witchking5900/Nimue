@@ -6,7 +6,8 @@ import { Check, Sparkles, Crown, Loader2, Zap, ChevronLeft, Shield, AlertTriangl
 import { supabase } from '../supabaseClient';
 
 // ▼▼▼ CONTROL PANEL ▼▼▼
-const IS_LIFETIME_DEAL_ACTIVE = true; 
+// ⚠️ SET TO FALSE FOR LAUNCH (Enable later for promotions)
+const IS_LIFETIME_DEAL_ACTIVE = false; 
 
 export default function PricingPage() {
   const { theme, language } = useTheme();
@@ -128,10 +129,10 @@ export default function PricingPage() {
         setProcessing(true);
 
         const { data, error } = await supabase.functions.invoke('bog-payment', {
-            body: {
-                action: 'create_order',
+            body: { 
+                action: 'create_order', 
                 amount: price, 
-                user_id: user.id,
+                user_id: user.id, 
                 period: period 
             }
         });
@@ -240,12 +241,17 @@ export default function PricingPage() {
           <p className={`text-lg ${isMagical ? 'text-slate-400' : 'text-slate-600'}`}>{isMagical ? text.descMag : text.descStd}</p>
         </div>
 
-        {/* TEST ZONE */}
+        {/* ===========================================
+           ADMIN TEST ZONE (HIDDEN FOR LAUNCH)
+           Uncomment this div to test with 1 GEL
+        ===========================================
+        
         <div className="max-w-md mx-auto mb-10 p-4 bg-red-100/10 border border-red-500 rounded-xl text-center backdrop-blur-md">
             <h3 className="text-red-500 font-bold mb-2 flex items-center justify-center gap-2"><AlertTriangle size={18}/> ADMIN TEST ZONE</h3>
             <button onClick={() => handleSubscribe(1.00, '1_minute')} disabled={processing} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2">{processing ? <Loader2 className="animate-spin" /> : "TEST: Buy 1 Minute Plan (₾1.00)"}</button>
             <p className="text-xs text-red-400 mt-2">Use this to test expiration. Expires in 60 seconds.</p>
         </div>
+        */}
 
         {IS_LIFETIME_DEAL_ACTIVE && (
             <div className="mb-12 relative group animate-in zoom-in duration-500">
@@ -260,7 +266,7 @@ export default function PricingPage() {
                             <div className="flex flex-wrap gap-2 mt-2">{grandMagusFeatures.slice(0, 2).map((f, i) => (<span key={i} className={`text-[10px] px-2 py-0.5 rounded-full border ${isMagical ? 'bg-purple-900/40 border-purple-500/40 text-purple-200' : 'bg-blue-50 border-blue-200 text-blue-700'}`}><Zap className="inline mr-1 mb-0.5" size={10} />{f}</span>))}</div>
                         </div>
                     </div>
-                    <div npx supabase functions deploy bog-paymentclassName="flex items-center gap-6">
+                    <div className="flex items-center gap-6">
                         <div className="text-right hidden md:block"><div className={`text-3xl font-bold ${isMagical ? 'text-white' : 'text-slate-900'}`}>₾150.00</div><div className="text-xs text-slate-500 uppercase">{text.oneTime}</div></div>
                         <button onClick={() => handleSubscribe(150.00, 'lifetime')} disabled={processing} className={`font-bold py-3 px-8 rounded-lg shadow-lg transform transition hover:scale-105 disabled:opacity-50 disabled:cursor-wait ${isMagical ? 'bg-gradient-to-r from-amber-600 to-purple-600 hover:from-amber-500 hover:to-purple-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{processing ? text.processing : (isMagical ? text.gmBtnMag : text.gmBtnStd)}</button>
                     </div>
