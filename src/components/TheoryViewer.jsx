@@ -5,8 +5,12 @@ import { useGameLogic } from '../hooks/useGameLogic';
 import { useToast } from '../context/ToastContext';
 import { 
   Book, ArrowRight, Brain, Loader2, CheckCircle, Crown, RotateCcw, 
-  ChevronLeft, FileText, Sparkles, Scroll, Bell, BellRing, FolderOpen, Search 
+  ChevronLeft, FileText, Sparkles, Scroll, Bell, BellRing, FolderOpen, 
+  List, Home, X 
 } from "lucide-react";
+
+// --- CONFIGURATION ---
+const QUIZ_XP_REWARD = 100; // Updated to 100 XP
 
 export default function TheoryViewer({ onBack }) {
   const { theme, language } = useTheme();
@@ -77,13 +81,6 @@ export default function TheoryViewer({ onBack }) {
     } else {
         return langData.standard || "";
     }
-  };
-
-  const getText = (obj) => getContent(obj); 
-
-  const awardXp = (amount) => {
-    if (amount === 0) return;
-    if (gainXp) gainXp(amount);
   };
 
   // --- FETCH DATA ---
@@ -169,15 +166,14 @@ export default function TheoryViewer({ onBack }) {
       } catch (err) { addToast("Error: " + err.message); }
   };
 
-  // --- QUIZ LOGIC (FIXED XP GRANTING) ---
+  // --- QUIZ LOGIC ---
   const finishQuiz = async () => {
     const masteryId = `${selectedTopic.id}_mastered`;
     const scorePercent = Math.round((quizState.score / selectedTopic.quiz.length) * 100);
     
     // Only grant XP if 100% score AND hasn't been mastered before
     if (scorePercent === 100 && !completedIds.has(masteryId)) {
-        // FIX: Pass the XP amount directly to completeActivity so DB records it
-        await completeActivity(masteryId, 100); 
+        await completeActivity(masteryId, QUIZ_XP_REWARD); // Uses Config Value (100)
         setShowMasteryModal(true); 
     }
     setQuizState(prev => ({ ...prev, showResults: true }));
@@ -332,7 +328,32 @@ export default function TheoryViewer({ onBack }) {
     const question = selectedTopic.quiz[quizState.currentQuestionIndex];
     return (
       <div className={`p-6 rounded-2xl border-2 ${isMagical ? 'bg-slate-900 border-purple-500' : 'bg-white border-blue-500'}`}>
-        <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl">Quiz: {quizState.currentQuestionIndex + 1} / {selectedTopic.quiz.length}</h3><Brain className={isMagical ? "text-purple-400" : "text-blue-500"} /></div>
+        
+        {/* ▼▼▼ NAVIGATION BUTTONS ▼▼▼ */}
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-opacity-10 border-slate-500">
+            <button 
+                onClick={() => {
+                    setQuizState({ active: false, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null });
+                    setSelectedTopic(null);
+                }}
+                className={`flex items-center gap-2 text-sm font-bold opacity-70 hover:opacity-100 transition-opacity ${isMagical ? 'text-slate-300' : 'text-slate-600'}`}
+            >
+                <List size={18} /> {language === 'ka' ? "სიაში დაბრუნება" : "Back to List"}
+            </button>
+
+            <button 
+                onClick={onBack}
+                className={`flex items-center gap-2 text-sm font-bold opacity-70 hover:opacity-100 transition-opacity ${isMagical ? 'text-slate-300' : 'text-slate-600'}`}
+            >
+                <Home size={18} /> {language === 'ka' ? "მთავარი" : "Main Menu"}
+            </button>
+        </div>
+        {/* ▲▲▲ END NAVIGATION ▲▲▲ */}
+
+        <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-xl">Quiz: {quizState.currentQuestionIndex + 1} / {selectedTopic.quiz.length}</h3>
+            <Brain className={isMagical ? "text-purple-400" : "text-blue-500"} />
+        </div>
         
         <p className="text-lg mb-6 font-medium">{getContent(question.question)}</p>
         
@@ -392,7 +413,8 @@ export default function TheoryViewer({ onBack }) {
                     <Crown size={48} /><Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-spin-slow" size={32} />
                 </div>
                 <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>{language === 'ka' ? "ჩანაწერი შესწავლილია" : "Inscription Mastered"}</h2>
-                <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+100 XP</div>
+                {/* Updated XP Text */}
+                <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+{QUIZ_XP_REWARD} XP</div>
                 <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{language === 'ka' ? "გაგრძელება" : "Continue"}</button>
             </div>
         </div>
@@ -443,7 +465,10 @@ export default function TheoryViewer({ onBack }) {
             <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} disabled={isMastered} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isMastered ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50 border border-slate-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200') : (isMagical ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/20')}`}>
                 {isMastered 
                     ? <><Crown size={20} /> {(language === 'ka' ? "ჩაბარებულია" : "Passed")}</>
-                    : <><Brain size={20} /> {isMagical ? (language === 'ka' ? "არქიმაგის გამოცდა (+100 XP)" : "Face Archmage's Challenge (+100 XP)") : (language === 'ka' ? "ქვიზის დაწყება (+100 XP)" : "Take Quiz (+100 XP)")}</>
+                    : <><Brain size={20} /> {isMagical 
+                        ? (language === 'ka' ? `არქიმაგის გამოცდა (+${QUIZ_XP_REWARD} XP)` : `Face Archmage's Challenge (+${QUIZ_XP_REWARD} XP)`) 
+                        : (language === 'ka' ? `ქვიზის დაწყება (+${QUIZ_XP_REWARD} XP)` : `Take Quiz (+${QUIZ_XP_REWARD} XP)`)
+                      }</>
                 }
             </button>
         )}
