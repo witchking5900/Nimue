@@ -177,7 +177,7 @@ export default function TheoryViewer({ onBack }) {
     // Only grant XP if 100% score AND hasn't been mastered before
     if (scorePercent === 100 && !completedIds.has(masteryId)) {
         // FIX: Pass the XP amount directly to completeActivity so DB records it
-        await completeActivity(masteryId, 10); 
+        await completeActivity(masteryId, 100); 
         setShowMasteryModal(true); 
     }
     setQuizState(prev => ({ ...prev, showResults: true }));
@@ -392,7 +392,7 @@ export default function TheoryViewer({ onBack }) {
                     <Crown size={48} /><Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-spin-slow" size={32} />
                 </div>
                 <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>{language === 'ka' ? "ჩანაწერი შესწავლილია" : "Inscription Mastered"}</h2>
-                <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+10 XP</div>
+                <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+100 XP</div>
                 <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{language === 'ka' ? "გაგრძელება" : "Continue"}</button>
             </div>
         </div>
@@ -443,7 +443,7 @@ export default function TheoryViewer({ onBack }) {
             <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} disabled={isMastered} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isMastered ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50 border border-slate-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200') : (isMagical ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/20')}`}>
                 {isMastered 
                     ? <><Crown size={20} /> {(language === 'ka' ? "ჩაბარებულია" : "Passed")}</>
-                    : <><Brain size={20} /> {isMagical ? (language === 'ka' ? "არქიმაგის გამოცდა (+10 XP)" : "Face Archmage's Challenge (+10 XP)") : (language === 'ka' ? "ქვიზის დაწყება (+10 XP)" : "Take Quiz (+10 XP)")}</>
+                    : <><Brain size={20} /> {isMagical ? (language === 'ka' ? "არქიმაგის გამოცდა (+100 XP)" : "Face Archmage's Challenge (+100 XP)") : (language === 'ka' ? "ქვიზის დაწყება (+100 XP)" : "Take Quiz (+100 XP)")}</>
                 }
             </button>
         )}
