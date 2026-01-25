@@ -76,8 +76,8 @@ export const clinicalCases = [
             ka: "რითმის კონტროლისთვის (Rhythm Control) ვირჩევთ ამიოდარონს. როგორია მისი მოქმედების მექანიზმი?"
         },
         hint: {
-            en: "UWorld Note: Which class does it belong to and which channels does it block?",
-            ka: "UWorld Note: რომელ კლასს მიეკუთვნება და რომელ არხებს ბლოკავს?"
+            en: " Which class does it belong to and which channels does it block?",
+            ka: " რომელ კლასს მიეკუთვნება და რომელ არხებს ბლოკავს?"
         },
         options: [
             {
@@ -108,8 +108,8 @@ export const clinicalCases = [
             ka: "ამიოდარონის დაწყების შემდეგ, ეკგ-ზე ვხედავთ QT ინტერვალის გახანგრძლივებას. უნდა შევწყვიტოთ თუ არა წამალი?"
         },
         hint: {
-            en: "UWorld Note: Does Amiodarone cause Torsades des Pointes?",
-            ka: "UWorld Note: იწვევს თუ არა ამიოდარონი Torsades des Pointes-ს?"
+            en: " Does Amiodarone cause Torsades des Pointes?",
+            ka: " იწვევს თუ არა ამიოდარონი Torsades des Pointes-ს?"
         },
         options: [
             {
@@ -134,8 +134,8 @@ export const clinicalCases = [
             ka: "პაციენტი მოდის 6 თვის შემდეგ დაღლილობით და წონის მატებით. რომელი ორგანოს ტოქსიურობაზე მიიტანთ ეჭვს?"
         },
         hint: {
-            en: "UWorld Note: Thyroid complication is more common with preexisting disease.",
-            ka: "UWorld Note: Thyroid complication is more common with preexisting disease."
+            en: "Thyroid complication is more common with preexisting disease.",
+            ka: " ფარისებრი ჯირკვლის გართულებები უფრო ხშირია თანმხლები დაავადებების დროს."
         },
         options: [
             {
@@ -166,8 +166,8 @@ export const clinicalCases = [
             ka: "კიდევ რომელი გვერდითი ეფექტებია მოსალოდნელი ამიოდარონის ხანგრძლივი მიღებისას?"
         },
         hint: {
-            en: "UWorld Note: Note lists lung, liver, and nervous system.",
-            ka: "UWorld Note: ფაილში ჩამოთვლილია ფილტვი, ღვიძლი და ნერვული სისტემა."
+            en: " lung, liver, and nervous system.",
+            ka: " ფილტვი, ღვიძლი და ნერვული სისტემა."
         },
         options: [
             {
@@ -208,8 +208,8 @@ export const clinicalCases = [
             ka: "პაციენტი აღნიშნავს, რომ ტკივილი იცვლება პოზის მიხედვით. რომელი პოზა ამსუბუქებს პერიკარდიტის ტკივილს?"
         },
         hint: {
-            en: "UWorld Note: Pericarditis pain is sharp & pleuritic.",
-            ka: "UWorld Note: Pericarditis pain is sharp & pleuritic."
+            en: " Pericarditis pain is sharp & pleuritic.",
+            ka: " პერიკარდიტის დროს ტკივილი მჩხვლეტი და პლევრული ხასიათისაა."
         },
         options: [
             {
@@ -272,8 +272,8 @@ export const clinicalCases = [
                 ka: "პაციენტი ბრუნდება 3 დღის შემდეგ გაუარესებით: წნევა 80/50 mmHg, კისრის ვენები დაბერილია (JVD). რა გართულებაზე ეჭვობთ?"
             },
             hint: {
-                en: "UWorld Note: Beck Triad = Hypotension + JVD + Distant heart sounds.",
-                ka: "UWorld Note: Beck Triad = Hypotension + JVD + Distant heart sounds."
+                en: " Beck Triad = Hypotension + JVD + Distant heart sounds.",
+                ka: "ბეკის ტრიადა = ჰიპოტენზია + კისრის ვენების დაბერვა (JVD) + მოყრუებული გულის ტონები."
             },
             options: [
                 {
