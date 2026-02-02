@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useGameLogic } from '../hooks/useGameLogic';
 import { 
@@ -90,6 +90,11 @@ export default function HemaRangesGame({ onBack }) {
     setSelectedOption(null);
     setIsCorrect(null);
   };
+
+  // 🔥 Automatically load first question
+  useEffect(() => {
+      generateQuestion();
+  }, []);
 
   const handleAnswer = (option) => {
     if (selectedOption) return; // Prevent double click

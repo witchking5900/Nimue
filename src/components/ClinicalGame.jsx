@@ -71,6 +71,59 @@ export default function ClinicalGame({ onBack }) {
 
   const isUnlimitedUser = ['archmage', 'insubstantial'].includes(tier);
 
+  // --- TRANSLATION DICTIONARY ---
+  const t = {
+    en: {
+        loading: isMagical ? "Summoning Souls from the Archive..." : "Loading Clinical Cases...",
+        ranked: "Ranked Mode",
+        gameOver: "Game Over!",
+        unlimited: "Unlimited",
+        left: "left",
+        refillsIn: "Refills in",
+        hours: "h",
+        mins: "m",
+        confirmRefill: "Spend 100 XP for Full Hint Restore (2)?",
+        hintsRestored: "Hints fully restored!",
+        notEnoughXp: "Not enough XP!",
+        unknown: "Unknown",
+        noExplanation: "No explanation available.",
+        caseMastered: "Case Mastered!",
+        question: "Question",
+        patientProfile: "Patient Profile",
+        hint: "Hint:",
+        correct: "Correct!",
+        incorrect: "Incorrect!",
+        next: "Next",
+        finish: "Finish",
+        consult: isMagical ? "Consult with Archmage" : "Reveal Hint"
+    },
+    ka: {
+        loading: isMagical ? "სულების გამოძახება არქივიდან..." : "კლინიკური ქეისების ჩატვირთვა...",
+        ranked: "რეიტინგული რეჟიმი",
+        gameOver: "თამაში დასრულდა!",
+        unlimited: "ულიმიტო",
+        left: "დარჩა",
+        refillsIn: "აღდგება",
+        hours: "სთ",
+        mins: "წთ",
+        confirmRefill: "დახარჯოთ 100 XP სრული აღდგენისთვის (2 მინიშნება)?",
+        hintsRestored: "მინიშნებები აღდგენილია!",
+        notEnoughXp: "არ გაქვთ საკმარისი XP!",
+        unknown: "უცნობი",
+        noExplanation: "ახსნა არ არის ხელმისაწვდომი.",
+        caseMastered: "ქეისი შესწავლილია!",
+        question: "კითხვა",
+        patientProfile: "პაციენტის პროფილი",
+        hint: "მინიშნება:",
+        correct: "სწორია!",
+        incorrect: "შეცდომა!",
+        next: "შემდეგი",
+        finish: "დასრულება",
+        consult: isMagical ? "უზენაესი ჯადოქრის დახმარება" : "მინიშნების ნახვა"
+    }
+  };
+  const text = t[language];
+
   useEffect(() => {
     const fetchAndMergeCases = async () => {
       setIsLoading(true);
@@ -119,14 +172,15 @@ export default function ClinicalGame({ onBack }) {
       else localStorage.removeItem('hint_regen_target');
   };
 
+  // 🔥 FIXED: Time units now respect language
   const getHintTimeLeft = () => {
       if (!hintRegenTarget) return "";
       const diff = hintRegenTarget - Date.now();
-      if (diff <= 0) return "0m";
+      if (diff <= 0) return `0${text.mins}`;
       const hours = Math.floor(diff / (1000 * 60 * 60));
       const minutes = Math.ceil((diff % (1000 * 60 * 60)) / (1000 * 60));
-      if (hours > 0) return `${hours}h ${minutes}m`;
-      return `${minutes}m`;
+      if (hours > 0) return `${hours}${text.hours} ${minutes}${text.mins}`;
+      return `${minutes}${text.mins}`;
   };
 
   const getText = (content) => {
@@ -182,8 +236,8 @@ export default function ClinicalGame({ onBack }) {
                     question: getText(currentQuestion.question),
                     userAnswer: getText(option.text),
                     userFeedback: getText(option.feedback),
-                    correctAnswer: getText(correctOption?.text || "Unknown"),
-                    correctFeedback: getText(correctOption?.feedback || "No explanation available.")
+                    correctAnswer: getText(correctOption?.text || text.unknown),
+                    correctFeedback: getText(correctOption?.feedback || text.noExplanation)
                 }
             );
         }
@@ -218,7 +272,7 @@ export default function ClinicalGame({ onBack }) {
           if (!isMastered && activeGrimoire.xpReward > 0) xpToGrant = activeGrimoire.xpReward;
           if (xpToGrant > 0) {
               completeActivity(masteryId, xpToGrant); 
-              addToast(language === 'en' ? `Case Mastered! +${xpToGrant} XP` : `ქეისი შესწავლილია! +${xpToGrant} XP`, 'success');
+              addToast(`${text.caseMastered} +${xpToGrant} XP`, 'success');
           } else {
               completeActivity(masteryId, 0);
           }
@@ -245,29 +299,21 @@ export default function ClinicalGame({ onBack }) {
     }
   };
 
-  // --- UPDATED: HINT REFILL VIA XP ---
   const buyRefill = () => {
       if (xp >= 100) {
-          if (confirm(language === 'ka' ? "დახარჯოთ 100 XP სრული აღდგენისთვის (2 მინიშნება)?" : "Spend 100 XP for Full Hint Restore (2)?")) {
-              
+          if (confirm(text.confirmRefill)) {
               if (spendXp) spendXp(100);
-              
-              // Refill to 2
               updateHintState(2, null);
-              
-              // Reveal the hint they were trying to unlock
               setRevealedHints(prev => ({ ...prev, [pendingHintStepId]: true }));
-              
-              addToast(language === 'ka' ? "მინიშნებები აღდგენილია!" : "Hints fully restored!", 'success');
+              addToast(text.hintsRestored, 'success');
               setShowHintModal(false);
               setPendingHintStepId(null);
           }
       } else {
-          addToast(language === 'ka' ? "არ გაქვთ საკმარისი XP!" : "Not enough XP!", 'error');
+          addToast(text.notEnoughXp, 'error');
       }
   };
 
-  // --- HEART PURCHASE HANDLER (XP ONLY) ---
   const handleBuyHeart = () => {
       const result = buyHeartWithXp();
       if (result.success) {
@@ -292,7 +338,7 @@ export default function ClinicalGame({ onBack }) {
 
   // --- RENDER 1: CASE LIST ---
   if (!activeScenario) {
-    if (isLoading) return <div className="w-full min-h-[50vh] flex flex-col items-center justify-center text-slate-500 gap-4"><Loader2 className="animate-spin w-8 h-8 text-purple-500" /><p>Summoning Souls from the Archive...</p></div>;
+    if (isLoading) return <div className="w-full min-h-[50vh] flex flex-col items-center justify-center text-slate-500 gap-4"><Loader2 className="animate-spin w-8 h-8 text-purple-500" /><p>{text.loading}</p></div>;
     const categories = ["All", ...new Set(allCases.map(c => c.category))];
     const filteredCases = selectedCategory === "All" ? allCases : allCases.filter(c => c.category === selectedCategory);
     return (
@@ -315,7 +361,11 @@ export default function ClinicalGame({ onBack }) {
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <div className="flex items-center gap-4">
             <button onClick={onBack} className="px-4 py-2 rounded-xl bg-black/5 hover:bg-black/10 flex items-center gap-2 transition-colors"><RotateCcw size={18} /> {language === 'ka' ? 'მთავარი' : 'Home'}</button>
-            <div><h1 className={`text-2xl font-bold flex items-center gap-2 ${isMagical ? 'text-amber-100' : 'text-slate-900'}`}><activeGrimoire.icon className={activeGrimoire.color} />{activeGrimoire.title[language]}</h1><div className="text-xs opacity-50 font-bold uppercase tracking-wider mt-1">Ranked Mode (100 XP)</div></div>
+            <div>
+                <h1 className={`text-2xl font-bold flex items-center gap-2 ${isMagical ? 'text-amber-100' : 'text-slate-900'}`}><activeGrimoire.icon className={activeGrimoire.color} />{activeGrimoire.title[language]}</h1>
+                {/* 🔥 FIXED: Header translation */}
+                <div className="text-xs opacity-50 font-bold uppercase tracking-wider mt-1">{text.ranked} (100 XP)</div>
+            </div>
           </div>
           <div className="flex items-center gap-1 bg-black/5 px-4 py-2 rounded-full self-start md:self-auto border border-black/5"><Heart size={20} className="text-red-500 fill-red-500" /><span className="font-bold text-lg">{hearts}</span></div>
         </div>
@@ -382,7 +432,8 @@ export default function ClinicalGame({ onBack }) {
         )}
         <div className={`max-w-sm w-full p-8 rounded-2xl shadow-2xl bg-white border-slate-200`}>
           <Skull className="w-20 h-20 mx-auto mb-4 text-red-500" />
-          <h2 className="text-2xl font-bold text-red-600 mb-2">Game Over!</h2>
+          {/* 🔥 FIXED: Game Over translation */}
+          <h2 className="text-2xl font-bold text-red-600 mb-2">{text.gameOver}</h2>
           <p className="mb-6 opacity-70">{language === 'ka' ? 'სიცოცხლეები ამოგეწურათ.' : 'You have run out of lives.'}</p>
           <button onClick={() => setShowHeartModal(true)} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition flex items-center justify-center gap-2 mb-3"><Plus size={18} /> {language === 'ka' ? 'სიცოცხლის ყიდვა' : 'Buy Life'}
           </button>
@@ -431,7 +482,6 @@ export default function ClinicalGame({ onBack }) {
                 <h3 className="text-2xl font-bold mb-2 flex items-center gap-2"><AlertCircle className="text-red-500" />{language === 'ka' ? 'მინიშნებები ამოგეწურათ!' : 'Out of Hints!'}</h3>
                 <p className="opacity-80 mb-6 text-sm">{language === 'ka' ? 'დღიური ლიმიტი ამოწურულია. გსურთ დამატება?' : 'You have used your daily allowance. Purchase more?'}</p>
                 <div className="space-y-3">
-                    {/* TOP BUTTON REMOVED AS REQUESTED */}
                     <button onClick={buyRefill} className={`w-full p-4 rounded-xl border flex justify-between items-center transition-all ${isMagical ? 'bg-amber-900/20 border-amber-500 hover:bg-amber-900/40' : 'bg-green-50 border-green-500 hover:bg-green-100'}`}>
                         <div className="text-left"><div className="font-bold flex items-center gap-2"><Zap size={16} className={isMagical ? "text-amber-500" : "text-green-600"} />{language === 'ka' ? 'სრული აღდგენა' : 'Full Restore'}</div><div className="text-xs opacity-60">{language === 'ka' ? 'აღადგენს 2 მინიშნებას' : 'Restores daily limit (2)'}</div></div>
                         <div className={isMagical ? "font-bold text-amber-500" : "font-bold text-green-600"}>100 XP</div>
@@ -449,20 +499,28 @@ export default function ClinicalGame({ onBack }) {
         <div className={`h-2 w-full ${isMagical ? 'bg-slate-900' : 'bg-slate-100'}`}><div className={`h-full transition-all duration-700 ease-out ${isMagical ? 'bg-purple-500' : 'bg-blue-500'}`} style={{ width: `${(currentStep / activeScenario.steps.length) * 100}%` }}></div></div>
         <div className="p-6 md:p-8">
           <div className={`flex flex-wrap gap-4 mb-8 p-4 rounded-xl border text-sm ${isMagical ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
-             <div className="w-full font-bold mb-1 border-b pb-2 flex justify-between opacity-80"><span>{language === 'ka' ? 'პაციენტის პროფილი' : 'Patient Profile'}</span></div>
+             <div className="w-full font-bold mb-1 border-b pb-2 flex justify-between opacity-80"><span>{text.patientProfile}</span></div>
             <p className="w-full italic opacity-90">{getText(activeScenario.patient.details)} {getText(activeScenario.patient.complaint)}</p>
             <div className={`flex items-center gap-2 px-2 py-1 rounded border ${isMagical ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`}><Activity size={16} className={isMagical ? "text-purple-400" : "text-blue-500"} /><span>{getText(activeScenario.patient.ecg)}</span></div>
             <div className={`flex items-center gap-2 px-2 py-1 rounded border ${isMagical ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`}><Thermometer size={16} className="text-orange-500" />{activeScenario.patient.vitals.bp}, {activeScenario.patient.vitals.hr}</div>
           </div>
-          <h2 className="text-xl font-bold mb-4">{language === 'ka' ? 'კითხვა' : 'Question'} {currentStep + 1}: <br/><span className="font-normal opacity-90 text-lg">{getText(step.question)}</span></h2>
+          <h2 className="text-xl font-bold mb-4">{text.question} {currentStep + 1}: <br/><span className="font-normal opacity-90 text-lg">{getText(step.question)}</span></h2>
           {step.hint && (
             <div className="mb-6">
               {!isHintRevealed ? (
                 <button onClick={() => handleRevealClick(step.id)} className={`w-full py-3 px-4 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 transition-all hover:scale-[1.02] ${isMagical ? 'border-amber-700 bg-amber-900/20 text-amber-200 hover:bg-amber-900/40' : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}>
-                    {isMagical ? <Zap size={18} /> : <AlertCircle size={18} />}{isMagical ? (language === 'ka' ? 'უზენაესი ჯადოქრის დახმარება' : 'Consult with Archmage') : (language === 'ka' ? 'მინიშნების ნახვა' : 'Reveal Hint')}<span className="text-xs opacity-70 ml-1">({isUnlimitedUser ? 'Unlimited' : (freeHintsLeft > 0 ? `${freeHintsLeft} left` : `Refills in ${getHintTimeLeft()}`)})</span>
+                    {isMagical ? <Zap size={18} /> : <AlertCircle size={18} />}
+                    {text.consult}
+                    {/* 🔥 FIXED: Dynamic Hint Status Text */}
+                    <span className="text-xs opacity-70 ml-1">
+                        ({isUnlimitedUser 
+                            ? text.unlimited 
+                            : (freeHintsLeft > 0 ? `${freeHintsLeft} ${text.left}` : `${text.refillsIn} ${getHintTimeLeft()}`)
+                        })
+                    </span>
                 </button>
               ) : (
-                <div className={`text-sm px-4 py-3 rounded-lg flex gap-2 animate-in fade-in zoom-in duration-300 border ${isMagical ? 'bg-amber-900/20 border-amber-700 text-amber-100' : 'bg-blue-100 border-blue-200 text-blue-800'}`}><AlertCircle size={18} className="shrink-0 mt-0.5" /><span><strong>{language === 'ka' ? 'მინიშნება:' : 'Hint:'}</strong> {getText(step.hint)}</span></div>
+                <div className={`text-sm px-4 py-3 rounded-lg flex gap-2 animate-in fade-in zoom-in duration-300 border ${isMagical ? 'bg-amber-900/20 border-amber-700 text-amber-100' : 'bg-blue-100 border-blue-200 text-blue-800'}`}><AlertCircle size={18} className="shrink-0 mt-0.5" /><span><strong>{text.hint}</strong> {getText(step.hint)}</span></div>
               )}
             </div>
           )}
@@ -473,9 +531,9 @@ export default function ClinicalGame({ onBack }) {
           </div>
           {selectedOption && (
             <div className="mt-8 animate-in slide-in-from-bottom-2 fade-in">
-              <div className={`p-5 rounded-xl mb-4 border-l-4 shadow-sm ${selectedOption.correct ? (isMagical ? "bg-green-900/20 border-green-500" : "bg-green-50 border-green-500") : (isMagical ? "bg-red-900/20 border-red-500" : "bg-red-50 border-red-500")}`}><h4 className={`font-bold mb-2 ${selectedOption.correct ? "text-green-500" : "text-red-500"}`}>{selectedOption.correct ? (language === 'ka' ? "სწორია!" : "Correct!") : (language === 'ka' ? "შეცდომა!" : "Incorrect!")}</h4><p className="opacity-90 text-sm leading-relaxed mb-3">{getText(selectedOption.feedback)}</p></div>
+              <div className={`p-5 rounded-xl mb-4 border-l-4 shadow-sm ${selectedOption.correct ? (isMagical ? "bg-green-900/20 border-green-500" : "bg-green-50 border-green-500") : (isMagical ? "bg-red-900/20 border-red-500" : "bg-red-50 border-red-500")}`}><h4 className={`font-bold mb-2 ${selectedOption.correct ? "text-green-500" : "text-red-500"}`}>{selectedOption.correct ? text.correct : text.incorrect}</h4><p className="opacity-90 text-sm leading-relaxed mb-3">{getText(selectedOption.feedback)}</p></div>
               {selectedOption.correct && (
-                <button onClick={nextStep} className={`w-full text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-lg ${isMagical ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{currentStep + 1 === activeScenario.steps.length ? (language === 'ka' ? "დასრულება" : "Finish") : (language === 'ka' ? "შემდეგი" : "Next")} <ArrowRight size={20} /></button>
+                <button onClick={nextStep} className={`w-full text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-lg ${isMagical ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{currentStep + 1 === activeScenario.steps.length ? text.finish : text.next} <ArrowRight size={20} /></button>
               )}
             </div>
           )}

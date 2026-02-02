@@ -35,7 +35,7 @@ export default function LabGame({ onBack }) {
     en: {
       title: isMagical ? "The Alchemist's Table" : "Lab Diagnostics",
       select: "Select a Potion to Analyze",
-      analyze: "Analyze Composition:",
+      analyze: "Analyze Composition", // Removed colon for flexibility
       normal: "Normal range:",
       correct: "Potion Identified!",
       wrong: "Volatile Reaction!",
@@ -43,12 +43,14 @@ export default function LabGame({ onBack }) {
       noEnergy: "No energy left! Wait for regeneration.",
       solved: "Solved",
       mastered: "Category Mastered",
-      skip: "Skip (Go to Next)"
+      skip: "Skip (Go to Next)",
+      unknown: "Unknown",
+      unknownPotion: "Unknown Potion"
     },
     ka: {
       title: isMagical ? "ალქიმიკოსის მაგიდა" : "ლაბორატორიული დიაგნოსტიკა",
       select: "აირჩიეთ ელექსირი",
-      analyze: "შემადგენლობის ანალიზი:",
+      analyze: "შემადგენლობის ანალიზი", // Removed colon for flexibility
       normal: "ნორმა:",
       correct: "ელექსირი ამოცნობილია!",
       wrong: "არასტაბილური რეაქცია!",
@@ -56,7 +58,9 @@ export default function LabGame({ onBack }) {
       noEnergy: "ენერგია არ გაქვთ! დაელოდეთ აღდგენას.",
       solved: "ამოხსნილია",
       mastered: "შესწავლილია",
-      skip: "გამოტოვება (შემდეგი)"
+      skip: "გამოტოვება (შემდეგი)",
+      unknown: "უცნობი",
+      unknownPotion: "უცნობი ელექსირი"
     }
   };
   const text = t[language];
@@ -100,7 +104,7 @@ export default function LabGame({ onBack }) {
       return stats;
   }, [allScenarios, completedIds]);
 
-  // --- HELPER TEXT FUNCTIONS (Moved up so handleAnswer can use them) ---
+  // --- HELPER TEXT FUNCTIONS ---
   const getCaseTitle = (scenario) => {
       if (scenario.title && scenario.title[language] && scenario.title[language].trim() !== "") {
           return scenario.title[language];
@@ -109,11 +113,11 @@ export default function LabGame({ onBack }) {
           return scenario.title['en'];
       }
       if (scenario.category) return scenario.category;
-      return "Unknown Potion";
+      return text.unknownPotion; // 🔥 FIXED: Uses translation
   };
 
   const getOptionText = (option) => {
-      if (!option) return "Unknown";
+      if (!option) return text.unknown; // 🔥 FIXED: Uses translation
       if (typeof option.text === 'string') return option.text;
       return option.text[language] || option.text['en'];
   };
@@ -205,18 +209,19 @@ export default function LabGame({ onBack }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user && activeCase) {
           try {
-              // 1. Find Correct Option for the snapshot
+              // 1. Find Correct Option
               const correctOpt = activeCase.options.find(o => o.correct);
 
-              // 2. Format the Lab Values into a readable string for "Question"
+              // 2. Format Lab Values
               const valuesList = activeCase.values
                   .map(v => `${v.name}: ${v.value} (${v.status})`)
                   .join('\n');
 
-              // 3. Create Snapshot
+              // 3. Create Snapshot (Now Fully Localized)
               const snapshot = {
                   title: getCaseTitle(activeCase),
-                  question: `Analyze Results:\n${valuesList}`, // Shows the lab values
+                  // 🔥 FIXED: Uses translated "Analyze" text
+                  question: `${text.analyze}:\n${valuesList}`, 
                   userAnswer: getOptionText(option),
                   userFeedback: getFeedbackText(activeCase, option),
                   correctAnswer: getOptionText(correctOpt),
@@ -232,7 +237,6 @@ export default function LabGame({ onBack }) {
                   .single();
 
               if (existing) {
-                  // Update Count
                   await supabase
                       .from('user_mistakes')
                       .update({ 
@@ -241,13 +245,12 @@ export default function LabGame({ onBack }) {
                       })
                       .eq('id', existing.id);
               } else {
-                  // Insert New
                   await supabase
                       .from('user_mistakes')
                       .insert({
                           user_id: user.id,
                           question_id: activeCase.id,
-                          game_type: 'clinical', // Tagged as Clinical/Lab
+                          game_type: 'clinical', 
                           mistake_count: 1,
                           question_snapshot: snapshot
                       });
@@ -373,7 +376,7 @@ export default function LabGame({ onBack }) {
                 : 'bg-white border-slate-200 shadow-lg'
         }`}>
             <h2 className={`text-xl font-bold mb-6 flex items-center gap-2 ${isMagical ? 'text-purple-300' : 'text-slate-700'}`}>
-                {text.analyze}
+                {text.analyze}:
             </h2>
 
             <div className="space-y-4">

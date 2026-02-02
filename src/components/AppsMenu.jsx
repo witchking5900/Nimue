@@ -125,11 +125,22 @@ export default function AppsMenu({ onBack }) {
       if (subscribedApps.includes(appCategory)) {
           await supabase.from('subscriptions').delete().match({ user_id: user.id, category: appCategory });
           setSubscribedApps(prev => prev.filter(c => c !== appCategory));
-          addToast(isMagical ? "Link severed." : "Unsubscribed.");
+          
+          // 🔥 FIXED: Georgian Support
+          const msg = isMagical 
+            ? (language === 'ka' ? "კავშირი გაწყვეტილია." : "Link severed.")
+            : (language === 'ka' ? "გამოწერა გაუქმებულია." : "Unsubscribed.");
+          addToast(msg);
+
       } else {
           await supabase.from('subscriptions').insert({ user_id: user.id, category: appCategory });
           setSubscribedApps(prev => [...prev, appCategory]);
-          addToast(isMagical ? "Fate bound." : "Subscribed!");
+          
+          // 🔥 FIXED: Georgian Support
+          const msg = isMagical 
+            ? (language === 'ka' ? "ბედი შეკრულია." : "Fate bound.")
+            : (language === 'ka' ? "გამოწერილია!" : "Subscribed!");
+          addToast(msg, "success");
       }
   };
 
@@ -255,12 +266,15 @@ export default function AppsMenu({ onBack }) {
     if (!pendingRental) return;
     const cost = RENTAL_COSTS[pendingRental.id];
     const success = rentApp(pendingRental.id, cost);
+    
     if (success) {
+        // 🔥 FIXED: Georgian Support
         addToast(language === 'ka' ? "წარმატებით იქირავეთ (24 სთ)!" : "Rented for 24h!", "success");
         setPendingRental(null);
         setSelectedApp(pendingRental.id);
     } else {
-        addToast("Transaction failed. Contact the Archmage.", "error");
+        // 🔥 FIXED: Georgian Support
+        addToast(language === 'ka' ? "ტრანზაქცია ვერ ხერხდება." : "Transaction failed.", "error");
     }
   };
 
@@ -361,14 +375,13 @@ export default function AppsMenu({ onBack }) {
         {APP_CONFIG.map((app) => {
           const Icon = app.icon;
           const isGrimoire = app.id === 'failures';
-          const isMagusPlus = ['magus', 'grand_magus', 'insubstantial', 'archmage'].includes(tier);
-
+          
           // 1. Determine Access
           let unlocked = false;
           let isAlwaysUnlocked = app.id === 'ranges' || app.id === 'ecg';
 
           if (isGrimoire) {
-              unlocked = isMagusPlus; // Strict Tier Check
+              unlocked = ['magus', 'grand_magus', 'insubstantial', 'archmage'].includes(tier); // Strict Tier Check
           } else {
               unlocked = isAlwaysUnlocked || hasAccess(app.id);
           }

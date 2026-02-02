@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { Bell, CheckCheck, Zap, Skull, MessageCircle, BookOpen, AlertTriangle, Shield, Star, Info } from 'lucide-react';
+import { Bell, CheckCheck, Zap, Skull, MessageCircle, BookOpen, AlertTriangle, Shield, Star, Info, Crown } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -24,12 +24,14 @@ export default function NotificationBell() {
   const getTypeLabel = (type) => {
     const labels = {
       // Good
-      update: { en: "System Update", ka: "სისტემური განახლება" },
+      system: { en: "System", ka: "სისტემა" },
+      update: { en: "Update", ka: "განახლება" },
       xp: { en: "XP Gained", ka: "მიღებული XP" },
       reply: { en: "New Reply", ka: "ახალი პასუხი" },
       favorite_update: { en: "Favorite Update", ka: "ფავორიტის განახლება" },
       amnesty: { en: "Amnesty", ka: "ამნისტია" },
       bounty: { en: "Bounty Complete", ka: "დავალება შესრულდა" },
+      rank_up: { en: "Promotion", ka: "დაწინაურება" },
       // Bad
       ban: { en: "Ban Issued", ka: "ბანი" },
       strike: { en: "Strike Received", ka: "გაფრთხილება (Strike)" },
@@ -37,7 +39,6 @@ export default function NotificationBell() {
       warning: { en: "Warning", ka: "გაფრთხილება" },
     };
 
-    // Return translated label or fallback to formatted type string
     if (labels[type]) {
       return language === 'ka' ? labels[type].ka : labels[type].en;
     }
@@ -49,7 +50,7 @@ export default function NotificationBell() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // We select * so we get title_ka/message_ka if they exist
+      // We select * so we get title_ka/message_ka if they exist in DB
       const { data } = await supabase
         .from('notifications')
         .select('*')
@@ -73,6 +74,7 @@ export default function NotificationBell() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
+          // Verify the notification belongs to current user before refetching
           supabase.auth.getUser().then(({ data: { user } }) => {
               if (user && payload.new.user_id === user.id) {
                   fetchLatest();
@@ -120,13 +122,14 @@ export default function NotificationBell() {
   // --- HELPER: CONFIG ---
   const getNotificationConfig = (type) => {
       // 🟢 GOOD
-      if (['update', 'xp', 'reply', 'favorite_update', 'amnesty', 'bounty'].includes(type)) {
+      if (['update', 'xp', 'reply', 'favorite_update', 'amnesty', 'bounty', 'rank_up', 'system'].includes(type)) {
           let icon = <Info size={14}/>;
           if (type === 'xp') icon = <Zap size={14}/>;
           if (type === 'update') icon = <BookOpen size={14}/>;
           if (type === 'reply') icon = <MessageCircle size={14}/>;
           if (type === 'favorite_update') icon = <Star size={14}/>;
           if (type === 'bounty') icon = <Shield size={14}/>;
+          if (type === 'rank_up') icon = <Crown size={14}/>;
 
           return {
               bg: isMagical ? 'bg-emerald-900/20 border-emerald-500/50' : 'bg-green-50 border-green-200',
@@ -188,11 +191,14 @@ export default function NotificationBell() {
                 const style = getNotificationConfig(n.type);
                 
                 // --- 4. CONTENT SELECTION ---
-                // Try to find Georgian content if language is 'ka', otherwise default to English
                 const displayTitle = (language === 'ka' && n.title_ka) ? n.title_ka : n.title;
                 const displayMessage = (language === 'ka' && n.message_ka) ? n.message_ka : n.message;
-                // Format date based on language
-                const displayDate = new Date(n.created_at).toLocaleDateString(language === 'ka' ? 'ka-GE' : 'en-US');
+                
+                // 🔥 FIXED: Better Date + Time Formatting
+                const dateObj = new Date(n.created_at);
+                const displayDate = dateObj.toLocaleDateString(language === 'ka' ? 'ka-GE' : 'en-US', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
 
                 return (
                     <div 

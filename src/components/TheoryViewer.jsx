@@ -41,6 +41,77 @@ export default function TheoryViewer({ onBack }) {
 
   const [showMasteryModal, setShowMasteryModal] = useState(false);
 
+  // --- TRANSLATION DICTIONARY ---
+  const t = {
+    en: {
+        menu: "Menu",
+        archivesMagical: "Archives of Knowledge",
+        archivesStandard: "Clinical Theory",
+        noArchives: "No archives found.",
+        noScrollsMagical: "No scrolls found in this archive...",
+        noScrollsStandard: "No cases found in this category.",
+        backToList: "Back to List",
+        mainMenu: "Main Menu",
+        quiz: "Quiz",
+        finish: "Finish",
+        next: "Next",
+        correct: "Correct!",
+        incorrect: "Incorrect!",
+        masteryMagical: "Inscription Mastered",
+        masteryStandard: "Mastery Achieved!",
+        continue: "Continue",
+        master: "Master!",
+        keepStudying: "Keep Studying",
+        retake: "Retake Quiz",
+        returnText: "Return to Text",
+        back: "Back",
+        read: "Read",
+        markRead: "Mark as Read",
+        passed: "Passed",
+        archmageChallenge: `Face Archmage's Challenge (+${QUIZ_XP_REWARD} XP)`,
+        takeQuiz: `Take Quiz (+${QUIZ_XP_REWARD} XP)`,
+        linkSevered: "Link severed.",
+        unsubscribed: "Unsubscribed.",
+        fateBound: "Fate bound.",
+        subscribed: "Subscribed!",
+        loginReq: "Please sign in to subscribe."
+    },
+    ka: {
+        menu: "მენიუ",
+        archivesMagical: "ცოდნის არქივები",
+        archivesStandard: "კლინიკური თეორია",
+        noArchives: "არქივები ვერ მოიძებნა.",
+        noScrollsMagical: "ამ არქივში გრაგნილები არ არის...",
+        noScrollsStandard: "ამ კატეგორიაში ქეისები არ არის.",
+        backToList: "სიაში დაბრუნება",
+        mainMenu: "მთავარი",
+        quiz: "ქვიზი",
+        finish: "დასრულება",
+        next: "შემდეგი",
+        correct: "სწორია!",
+        incorrect: "შეცდომაა!",
+        masteryMagical: "ჩანაწერი შესწავლილია",
+        masteryStandard: "ოსტატობა მიღწეულია!",
+        continue: "გაგრძელება",
+        master: "ოსტატი!",
+        keepStudying: "სცადეთ თავიდან",
+        retake: "თავიდან დაწყება",
+        returnText: "ტექსტზე დაბრუნება",
+        back: "უკან",
+        read: "წაკითხულია",
+        markRead: "წაკითხვა",
+        passed: "ჩაბარებულია",
+        archmageChallenge: `არქიმაგის გამოცდა (+${QUIZ_XP_REWARD} XP)`,
+        takeQuiz: `ქვიზის დაწყება (+${QUIZ_XP_REWARD} XP)`,
+        linkSevered: "კავშირი გაწყვეტილია.",
+        unsubscribed: "გამოწერა გაუქმებულია.",
+        fateBound: "ბედი შეკრულია.",
+        subscribed: "გამოწერილია!",
+        loginReq: "გთხოვთ გაიაროთ ავტორიზაცია."
+    }
+  };
+  const text = t[language];
+
   // --- HELPER 1: GET CATEGORY DISPLAY NAME ---
   const getCategoryDisplay = (catObj) => {
     if (!catObj) return { title: '', subtitle: '' };
@@ -149,19 +220,19 @@ export default function TheoryViewer({ onBack }) {
       e.stopPropagation(); 
       if (!categoryKey) return;
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { addToast("Please sign in to subscribe."); return; }
+      if (!user) { addToast(text.loginReq); return; }
 
       try {
           if (subscribedCategories.includes(categoryKey)) {
               const { error } = await supabase.from('subscriptions').delete().match({ user_id: user.id, category: categoryKey });
               if (error) throw error;
               setSubscribedCategories(prev => prev.filter(c => c !== categoryKey));
-              addToast(isMagical ? "Link severed." : "Unsubscribed.");
+              addToast(isMagical ? text.linkSevered : text.unsubscribed);
           } else {
               const { error } = await supabase.from('subscriptions').insert({ user_id: user.id, category: categoryKey });
               if (error) throw error;
               setSubscribedCategories(prev => [...prev, categoryKey]);
-              addToast(isMagical ? "Fate bound." : "Subscribed!");
+              addToast(isMagical ? text.fateBound : text.subscribed, "success");
           }
       } catch (err) { addToast("Error: " + err.message); }
   };
@@ -217,25 +288,23 @@ export default function TheoryViewer({ onBack }) {
                     .from('user_mistakes')
                     .select('id, mistake_count')
                     .eq('user_id', user.id)
-                    .eq('question_id', currentQ.id) // Assuming Questions have IDs, otherwise use Index or Title hash
+                    .eq('question_id', currentQ.id) 
                     .single();
 
                 if (existing) {
-                    // Update Count
                     await supabase
                         .from('user_mistakes')
                         .update({ 
                             mistake_count: existing.mistake_count + 1,
-                            created_at: new Date().toISOString() // Refresh timestamp to show at top
+                            created_at: new Date().toISOString()
                         })
                         .eq('id', existing.id);
                 } else {
-                    // Insert New Mistake
                     await supabase
                         .from('user_mistakes')
                         .insert({
                             user_id: user.id,
-                            question_id: currentQ.id || `q_${Date.now()}`, // Fallback ID if missing
+                            question_id: currentQ.id || `q_${Date.now()}`, 
                             game_type: 'theory',
                             mistake_count: 1,
                             question_snapshot: snapshot
@@ -267,16 +336,16 @@ export default function TheoryViewer({ onBack }) {
         <div className="w-full animate-in fade-in">
             <div className="flex items-center gap-4 mb-8">
                  <button onClick={onBack} className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all border ${isMagical ? 'bg-slate-800 border-slate-700 text-amber-100 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-                    <ChevronLeft size={18} /> {language === 'ka' ? 'მენიუ' : 'Menu'}
+                    <ChevronLeft size={18} /> {text.menu}
                  </button>
                  <h1 className={`text-3xl font-bold ${isMagical ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-500 font-serif' : 'text-slate-900'}`}>
-                    {isMagical ? (language === 'ka' ? "ცოდნის არქივები" : "Archives of Knowledge") : (language === 'ka' ? "კლინიკური თეორია" : "Clinical Theory")}
+                    {isMagical ? text.archivesMagical : text.archivesStandard}
                  </h1>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {categories.length === 0 ? (
-                    <div className="col-span-2 text-center opacity-50 p-8">No archives found.</div>
+                    <div className="col-span-2 text-center opacity-50 p-8">{text.noArchives}</div>
                 ) : (
                     categories.map(cat => {
                         const standardKey = cat.title?.en?.standard || cat.slug;
@@ -350,7 +419,7 @@ export default function TheoryViewer({ onBack }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {currentCategoryInscriptions.length === 0 ? (
                     <div className="col-span-2 text-center opacity-50 p-12 italic">
-                        {isMagical ? "No scrolls found in this archive..." : "No cases found in this category."}
+                        {isMagical ? text.noScrollsMagical : text.noScrollsStandard}
                     </div>
                 ) : (
                     currentCategoryInscriptions.map((topic) => {
@@ -401,20 +470,20 @@ export default function TheoryViewer({ onBack }) {
                 }}
                 className={`flex items-center gap-2 text-sm font-bold opacity-70 hover:opacity-100 transition-opacity ${isMagical ? 'text-slate-300' : 'text-slate-600'}`}
             >
-                <List size={18} /> {language === 'ka' ? "სიაში დაბრუნება" : "Back to List"}
+                <List size={18} /> {text.backToList}
             </button>
 
             <button 
                 onClick={onBack}
                 className={`flex items-center gap-2 text-sm font-bold opacity-70 hover:opacity-100 transition-opacity ${isMagical ? 'text-slate-300' : 'text-slate-600'}`}
             >
-                <Home size={18} /> {language === 'ka' ? "მთავარი" : "Main Menu"}
+                <Home size={18} /> {text.mainMenu}
             </button>
         </div>
         {/* ▲▲▲ END NAVIGATION ▲▲▲ */}
 
         <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-xl">Quiz: {quizState.currentQuestionIndex + 1} / {selectedTopic.quiz.length}</h3>
+            <h3 className="font-bold text-xl">{text.quiz}: {quizState.currentQuestionIndex + 1} / {selectedTopic.quiz.length}</h3>
             <Brain className={isMagical ? "text-purple-400" : "text-blue-500"} />
         </div>
         
@@ -446,7 +515,7 @@ export default function TheoryViewer({ onBack }) {
                    const isCorrect = selectedOpt.id === question.correctId;
                    return (
                        <div className={`p-4 rounded-lg border-l-4 ${isCorrect ? 'bg-green-500/10 border-green-500 text-green-600' : 'bg-red-500/10 border-red-500 text-red-600'}`}>
-                           <p className="font-bold mb-1">{isCorrect ? (language === 'ka' ? "სწორია!" : "Correct!") : (language === 'ka' ? "შეცდომა!" : "Incorrect!")}</p>
+                           <p className="font-bold mb-1">{isCorrect ? text.correct : text.incorrect}</p>
                            <p className="text-sm opacity-90">{getContent(selectedOpt.feedback)}</p>
                        </div>
                    );
@@ -454,7 +523,7 @@ export default function TheoryViewer({ onBack }) {
                
                <div className="flex justify-end mt-4">
                    <button onClick={nextQuestion} className={`px-6 py-2 rounded-lg font-bold text-white ${isMagical ? 'bg-purple-600' : 'bg-blue-600'}`}>
-                       {quizState.currentQuestionIndex + 1 === selectedTopic.quiz.length ? "Finish" : "Next"} <ArrowRight size={18} className="inline ml-1" />
+                       {quizState.currentQuestionIndex + 1 === selectedTopic.quiz.length ? text.finish : text.next} <ArrowRight size={18} className="inline ml-1" />
                    </button>
                </div>
           </div>
@@ -475,9 +544,11 @@ export default function TheoryViewer({ onBack }) {
                 <div className={`relative mx-auto w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-xl ${isMagical ? 'bg-amber-900/50 text-amber-400 border-2 border-amber-500' : 'bg-blue-100 text-blue-600 border-2 border-blue-200'}`}>
                     <Crown size={48} /><Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-spin-slow" size={32} />
                 </div>
-                <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>{language === 'ka' ? "ჩანაწერი შესწავლილია" : "Inscription Mastered"}</h2>
+                <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>
+                    {isMagical ? text.masteryMagical : text.masteryStandard}
+                </h2>
                 <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+{QUIZ_XP_REWARD} XP</div>
-                <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{language === 'ka' ? "გაგრძელება" : "Continue"}</button>
+                <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{text.continue}</button>
             </div>
         </div>
     );
@@ -485,12 +556,12 @@ export default function TheoryViewer({ onBack }) {
     return (
         <div className={`p-8 rounded-2xl text-center border-2 ${isMagical ? 'bg-slate-900 border-purple-500' : 'bg-white border-blue-500'}`}>
             {showMasteryModal && <MasteryModal />}
-            <h2 className="text-3xl font-bold mb-4">{isPerfect ? (language === 'ka' ? "ოსტატი!" : "Mastery Achieved!") : (language === 'ka' ? "სცადეთ თავიდან" : "Keep Studying")}</h2>
+            <h2 className="text-3xl font-bold mb-4">{isPerfect ? text.master : text.keepStudying}</h2>
             <div className={`text-6xl font-black mb-2 ${isPerfect ? 'text-green-500' : 'text-red-500'}`}>{percentage}%</div>
             <div className="flex flex-col gap-3 mt-8">
-                {!isPerfect && <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${isMagical ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}><RotateCcw size={20} /> {language === 'ka' ? "თავიდან დაწყება" : "Retake Quiz"}</button>}
-                <button onClick={() => setQuizState({ active: false, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 ${isMagical ? 'bg-slate-800 text-amber-500 border border-slate-700' : 'bg-white text-blue-600 border border-slate-200'}`}><FileText size={20} /> {language === 'ka' ? "ტექსტზე დაბრუნება" : "Return to Text"}</button>
-                <button onClick={() => setSelectedTopic(null)} className={`w-full py-3 rounded-xl font-bold opacity-70 hover:opacity-100 ${isMagical ? 'bg-slate-800' : 'bg-slate-100 text-slate-600'}`}>{language === 'ka' ? "სიაში დაბრუნება" : "Back to List"}</button>
+                {!isPerfect && <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 ${isMagical ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}><RotateCcw size={20} /> {text.retake}</button>}
+                <button onClick={() => setQuizState({ active: false, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 ${isMagical ? 'bg-slate-800 text-amber-500 border border-slate-700' : 'bg-white text-blue-600 border border-slate-200'}`}><FileText size={20} /> {text.returnText}</button>
+                <button onClick={() => setSelectedTopic(null)} className={`w-full py-3 rounded-xl font-bold opacity-70 hover:opacity-100 ${isMagical ? 'bg-slate-800' : 'bg-slate-100 text-slate-600'}`}>{text.backToList}</button>
             </div>
         </div>
     );
@@ -508,7 +579,7 @@ export default function TheoryViewer({ onBack }) {
   return (
     <div className={`p-6 md:p-10 rounded-3xl border relative flex flex-col min-h-[60vh] ${isMagical ? 'bg-slate-900/80 border-amber-900/30' : 'bg-white border-slate-200 shadow-xl'}`}>
       <div className="mb-8 pb-4 border-b border-opacity-10 border-slate-500">
-        <button onClick={() => setSelectedTopic(null)} className="mb-4 text-xs opacity-50 hover:opacity-100 flex items-center gap-1 uppercase tracking-widest font-bold"><ChevronLeft size={14} /> {language === 'ka' ? "უკან" : "Back"}</button>
+        <button onClick={() => setSelectedTopic(null)} className="mb-4 text-xs opacity-50 hover:opacity-100 flex items-center gap-1 uppercase tracking-widest font-bold"><ChevronLeft size={14} /> {text.back}</button>
         <h2 className={`text-4xl font-bold ${isMagical ? 'text-amber-100 font-serif' : 'text-slate-900'}`}>{getContent(selectedTopic.title)}</h2>
         <div className={`mt-2 text-sm font-bold uppercase tracking-wider ${isMagical ? 'text-amber-600' : 'text-blue-500'}`}>{selectedTopic.category}</div>
       </div>
@@ -521,16 +592,13 @@ export default function TheoryViewer({ onBack }) {
 
       <div className={`mt-auto pt-8 border-t border-opacity-10 border-slate-500 flex flex-col md:flex-row gap-4`}>
         <button onClick={handleMarkAsRead} disabled={isRead} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isRead ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50' : 'bg-slate-100 text-slate-400 cursor-not-allowed') : (isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-900/20' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-900/20')}`}>
-            {isMagical ? <Scroll size={20} /> : <CheckCircle size={20} />} {isRead ? (language === 'ka' ? "წაკითხულია" : "Read") : (language === 'ka' ? "წაკითხვა" : "Mark as Read")}
+            {isMagical ? <Scroll size={20} /> : <CheckCircle size={20} />} {isRead ? text.read : text.markRead}
         </button>
         {selectedTopic.quiz && selectedTopic.quiz.length > 0 && (
             <button onClick={() => setQuizState({ active: true, currentQuestionIndex: 0, score: 0, showResults: false, selectedAnswer: null })} disabled={isMastered} className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all ${isMastered ? (isMagical ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50 border border-slate-700' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200') : (isMagical ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-900/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/20')}`}>
                 {isMastered 
-                    ? <><Crown size={20} /> {(language === 'ka' ? "ჩაბარებულია" : "Passed")}</>
-                    : <><Brain size={20} /> {isMagical 
-                        ? (language === 'ka' ? `არქიმაგის გამოცდა (+${QUIZ_XP_REWARD} XP)` : `Face Archmage's Challenge (+${QUIZ_XP_REWARD} XP)`) 
-                        : (language === 'ka' ? `ქვიზის დაწყება (+${QUIZ_XP_REWARD} XP)` : `Take Quiz (+${QUIZ_XP_REWARD} XP)`)
-                      }</>
+                    ? <><Crown size={20} /> {text.passed}</>
+                    : <><Brain size={20} /> {isMagical ? text.archmageChallenge : text.takeQuiz}</>
                 }
             </button>
         )}

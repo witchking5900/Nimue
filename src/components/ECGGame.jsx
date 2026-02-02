@@ -7,7 +7,7 @@ import {
   Activity, BookOpen, Brain, ChevronRight, CheckCircle, XCircle, 
   Info, RefreshCw, Stethoscope, Play, Pause, SplitSquareHorizontal, 
   Zap, AlertTriangle, Heart, ArrowLeft, Lock, Crown, Clock, Star,
-  Unlock, Feather // Added icons for modals
+  Unlock, Feather 
 } from 'lucide-react';
 
 // --- Constants & Data (UNCHANGED) ---
@@ -67,12 +67,32 @@ const TRANSLATIONS = {
     triplet: "Triplet",
     quadruplet: "Quadruplet",
     lives: "Lives",
-    exit: "Back to Menu",
+    exit: "Exit",
     locked: "Locked",
     rent: "Rent 24h",
     sessionComplete: "Session Complete!",
     perfectScore: "Perfect Score! You are a master of rhythms.",
     dailyMastered: "Daily Mastery Achieved",
+    // --- NEW TRANSLATIONS ADDED BELOW ---
+    anatomicalSync: "Anatomical Sync",
+    kentBundle: "Kent Bundle",
+    avDissociation: "AV DISSOCIATION",
+    regular: "Regular",
+    irregular: "Irregular",
+    present: "Present",
+    absent: "Absent",
+    wide: "Wide",
+    narrow: "Narrow",
+    loading: "Loading Grimoire...",
+    greatPractice: "Great practice session!",
+    questionsLeft: "Left",
+    masterTheTheory: "Master the theory. Analyze waveforms and pathophysiology.",
+    freeAccess: "Free Access",
+    realTimeGen: "Real-time generation. Visualize anatomical sync.",
+    unlocked: "Unlocked",
+    spotChallenge: "Spot diagnosis challenge. Unique rhythms per session.",
+    mastered: "Mastered",
+    sideBySide: "Side-by-side analysis against normal baseline.",
     // MODAL TEXTS
     signBlood: "Sign with Blood",
     refuseBargain: "Refuse Bargain",
@@ -138,12 +158,32 @@ const TRANSLATIONS = {
     triplet: "ტრიპლეტი",
     quadruplet: "კვადრიპლეტი",
     lives: "სიცოცხლეები",
-    exit: "მენიუში დაბრუნება",
+    exit: "გასვლა",
     locked: "დაბლოკილია",
     rent: "ქირაობა 24სთ",
     sessionComplete: "სესია დასრულებულია!",
     perfectScore: "შესანიშნავია! თქვენ რიტმების ოსტატი ხართ.",
     dailyMastered: "დღიური ოსტატობა მიღწეულია",
+    // --- NEW TRANSLATIONS ADDED BELOW ---
+    anatomicalSync: "ანატომიური სინქრონიზაცია",
+    kentBundle: "კენტის კონა",
+    avDissociation: "AV დისოციაცია",
+    regular: "რეგულარული",
+    irregular: "არარეგულარული",
+    present: "არის",
+    absent: "არ არის",
+    wide: "განიერი",
+    narrow: "ვიწრო",
+    loading: "გრიმუარის გახსნა...",
+    greatPractice: "კარგი ვარჯიშია!",
+    questionsLeft: "დარჩა",
+    masterTheTheory: "შეისწავლეთ თეორია. გააანალიზეთ ტალღები და პათოფიზიოლოგია.",
+    freeAccess: "უფასო წვდომა",
+    realTimeGen: "რეალურ დროში გენერაცია. ანატომიური ვიზუალიზაცია.",
+    unlocked: "გახსნილია",
+    spotChallenge: "მყისიერი დიაგნოსტიკის გამოცდა. უნიკალური რიტმები.",
+    mastered: "შესწავლილია",
+    sideBySide: "გვერდიგვერდ შედარება ნორმასთან.",
     // MODAL TEXTS
     signBlood: "სისხლით ხელმოწერა",
     refuseBargain: "უარი გარიგებაზე",
@@ -320,7 +360,7 @@ const CompareCard = ({ rhythmId, t, lang }) => {
   );
 };
 
-const HeartAnimation = ({ phase, rhythmKey, meta }) => {
+const HeartAnimation = ({ phase, rhythmKey, meta, t }) => {
   const rhythm = RHYTHMS[rhythmKey]; if (!rhythm) return null; 
   const cBase = "#e2e8f0"; const cActive = "#ef4444"; const cElec = "#94a3b8"; const cElecActive = "#fbbf24"; const cElecKent = "#10b981"; const cEctopic = "#f43f5e";
   const isP = phase === 'p_wave'; const isPR = phase === 'pr_segment'; const isQRS = phase === 'qrs'; const isST = phase === 'st_segment';
@@ -357,8 +397,8 @@ const HeartAnimation = ({ phase, rhythmKey, meta }) => {
         <path d="M100 120 L 130 150" fill="none" stroke={bundleColor} strokeWidth={rhythm.delay === 'left' ? 1 : 3} strokeDasharray={rhythm.delay === 'left' ? "2,2" : "0"} />
         <path d="M100 120 L 70 150" fill="none" stroke={bundleColor} strokeWidth={rhythm.delay === 'right' ? 1 : 3} strokeDasharray={rhythm.delay === 'right' ? "2,2" : "0"} />
       </svg>
-      {rhythm.kent && <div className="absolute top-16 right-4 text-[10px] font-bold text-emerald-600 bg-white/80 px-1 rounded">Kent Bundle</div>}
-      {rhythm.type === 'complete_block' && <div className="absolute top-20 left-[40%] text-[10px] font-bold text-red-600 bg-white/80 px-1 rounded">AV DISSOCIATION</div>}
+      {rhythm.kent && <div className="absolute top-16 right-4 text-[10px] font-bold text-emerald-600 bg-white/80 px-1 rounded">{t.kentBundle}</div>}
+      {rhythm.type === 'complete_block' && <div className="absolute top-20 left-[40%] text-[10px] font-bold text-red-600 bg-white/80 px-1 rounded">{t.avDissociation}</div>}
     </div>
   );
 };
@@ -459,8 +499,9 @@ const SimulatorView = ({ rhythmId, t, lang }) => {
                 </div>
                 <div className="lg:col-span-1">
                     <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 sticky top-6">
-                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 border-b pb-2 text-slate-800"><Heart className="text-red-500" /> Anatomical Sync</h3>
-                        <HeartAnimation phase={currentPhase} rhythmKey={rhythmId} meta={metaState} />
+                        {/* 🔥 FIXED: Header translation */}
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 border-b pb-2 text-slate-800"><Heart className="text-red-500" /> {t.anatomicalSync}</h3>
+                        <HeartAnimation phase={currentPhase} rhythmKey={rhythmId} meta={metaState} t={t} />
                         <div className="mt-6 space-y-3">
                             <div className="flex justify-between items-center text-sm border-b pb-2"><span className="text-slate-500">{t.currPhase}</span><span className="font-mono font-bold text-blue-600">{renderPhase(currentPhase)}</span></div>
                             <div className="flex justify-between items-center text-sm border-b pb-2"><span className="text-slate-500">{t.mechAction}</span><span className="font-medium text-right text-slate-700 text-xs">{renderPhase(currentPhase)}</span></div>
@@ -486,7 +527,8 @@ const StudyGrimoire = ({ t, lang, onBack }) => {
         <div className="w-full md:w-64 bg-white border-r border-slate-200 overflow-y-auto shrink-0">
             <div className="p-4 bg-slate-100 border-b border-slate-200 font-semibold text-slate-600 flex justify-between items-center">
                 {t.selectCondition}
-                <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 underline font-bold">Exit</button>
+                {/* 🔥 FIXED: Exit button translation */}
+                <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 underline font-bold">{t.exit}</button>
             </div>
             {Object.values(RHYTHMS).map((r) => (
             <button key={r.id} onClick={() => setActiveRhythm(r.id)} className={`w-full text-left p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors flex items-center justify-between ${activeRhythm === r.id ? 'bg-red-50 border-l-4 border-l-red-500' : ''}`}>
@@ -515,15 +557,18 @@ const StudyGrimoire = ({ t, lang, onBack }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase mb-1">{t.regularity}</h3>
-                <p className="font-medium text-slate-900">{RHYTHMS[activeRhythm].regular ? "Regular" : "Irregular"}</p>
+                {/* 🔥 FIXED: Translations for Regular/Irregular */}
+                <p className="font-medium text-slate-900">{RHYTHMS[activeRhythm].regular ? t.regular : t.irregular}</p>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase mb-1">{t.pWave}</h3>
-                <p className="font-medium text-slate-900">{RHYTHMS[activeRhythm].hasP ? "Present" : "Absent"}</p>
+                {/* 🔥 FIXED: Translations for Present/Absent */}
+                <p className="font-medium text-slate-900">{RHYTHMS[activeRhythm].hasP ? t.present : t.absent}</p>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <h3 className="text-sm font-semibold text-slate-500 uppercase mb-1">{t.qrsComplex}</h3>
-                <p className="font-medium text-slate-900">{RHYTHMS[activeRhythm].qrsWidth > 1.5 ? "Wide" : "Narrow"}</p>
+                {/* 🔥 FIXED: Translations for Wide/Narrow */}
+                <p className="font-medium text-slate-900">{RHYTHMS[activeRhythm].qrsWidth > 1.5 ? t.wide : t.narrow}</p>
                 </div>
             </div>
             <div className="space-y-6">
@@ -549,7 +594,8 @@ const SimulatorGrimoire = ({ t, lang, onBack }) => {
              <div className="w-full md:w-64 bg-white border-r border-slate-200 overflow-y-auto shrink-0">
              <div className="p-4 bg-slate-100 border-b border-slate-200 font-semibold text-slate-600 flex justify-between items-center">
                  {t.selectCondition}
-                 <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 underline font-bold">Exit</button>
+                 {/* 🔥 FIXED: Exit button translation */}
+                 <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 underline font-bold">{t.exit}</button>
              </div>
              {Object.values(RHYTHMS).map((r) => (
                <button key={r.id} onClick={() => setActiveRhythm(r.id)} className={`w-full text-left p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors flex items-center justify-between ${activeRhythm === r.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
@@ -653,7 +699,8 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
                     <h2 className="text-3xl font-bold text-slate-800 mb-2">{t.sessionComplete}</h2>
                     <div className="text-4xl font-bold text-blue-600 mb-4">{quizState.score} / {quizState.total}</div>
                     <p className="text-slate-500 mb-8">
-                        {quizState.score === quizState.total ? t.perfectScore : "Great practice session!"}
+                        {/* 🔥 FIXED: Translation for result message */}
+                        {quizState.score === quizState.total ? t.perfectScore : t.greatPractice}
                     </p>
                     <button onClick={onBack} className="w-full py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800">
                         {t.exit}
@@ -663,7 +710,7 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
         );
     }
 
-    if (!quizState.targetRhythm) return <div className="p-10 text-center text-slate-600">Loading Grimoire...</div>;
+    if (!quizState.targetRhythm) return <div className="p-10 text-center text-slate-600">{t.loading}</div>;
 
     return (
         <div className="flex-1 bg-slate-50 flex flex-col items-center justify-start pt-8 overflow-y-auto pb-20 md:pb-0">
@@ -680,7 +727,8 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
                </div>
                <div className="flex gap-4">
                     <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200">
-                        <span className="text-sm font-medium text-slate-500 uppercase mr-2">Left</span>
+                        {/* 🔥 FIXED: Translation for 'Left' */}
+                        <span className="text-sm font-medium text-slate-500 uppercase mr-2">{t.questionsLeft}</span>
                         <span className="text-xl font-bold text-slate-700">{quizState.questionQueue.length + (quizState.showResult ? 0 : 1)}</span>
                     </div>
                     <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-200">
@@ -745,7 +793,8 @@ const CompareGrimoire = ({ t, lang, onBack }) => {
                 <h2 className="text-3xl font-bold text-slate-800">{t.compareTitle}</h2>
                 <p className="text-slate-500">{t.compareInstr}</p>
                </div>
-               <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-800 underline font-bold">Exit</button>
+               {/* 🔥 FIXED: Exit button translation */}
+               <button onClick={onBack} className="text-sm text-slate-500 hover:text-slate-800 underline font-bold">{t.exit}</button>
              </div>
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                <div className="flex flex-col gap-2">
@@ -827,7 +876,6 @@ export default function ECGGame({ onBack }) {
       return false;
   };
 
-  // --- REPLACED handleRent with MODAL LOGIC ---
   const handleSelectGrimoire = (id, cost) => {
       if (hasGrimoireAccess(id)) {
           setView(id);
@@ -940,9 +988,10 @@ export default function ECGGame({ onBack }) {
                         <BookOpen size={24} />
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.studyMode}</h3>
-                     <p className="text-sm text-slate-400 mb-6">Master the theory. Analyze waveforms and pathophysiology.</p>
+                     {/* 🔥 FIXED: Translation */}
+                     <p className="text-sm text-slate-400 mb-6">{t.masterTheTheory}</p>
                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                        Free Access
+                        {t.freeAccess}
                      </div>
                 </button>
 
@@ -952,11 +1001,12 @@ export default function ECGGame({ onBack }) {
                         <Activity size={24} />
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.simulatorMode}</h3>
-                     <p className="text-sm text-slate-400 mb-6">Real-time generation. Visualize anatomical sync.</p>
+                     {/* 🔥 FIXED: Translation */}
+                     <p className="text-sm text-slate-400 mb-6">{t.realTimeGen}</p>
                      
                      {hasGrimoireAccess('simulator') ? (
                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                            Unlocked
+                           {t.unlocked}
                         </div>
                      ) : (
                         <div className="flex items-center justify-between mt-auto">
@@ -979,11 +1029,12 @@ export default function ECGGame({ onBack }) {
                         <Brain size={24} />
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.quizMode}</h3>
-                     <p className="text-sm text-slate-400 mb-6">Spot diagnosis challenge. {Object.keys(RHYTHMS).length} unique rhythms per session.</p>
+                     {/* 🔥 FIXED: Translation */}
+                     <p className="text-sm text-slate-400 mb-6">{t.spotChallenge}</p>
                      
                      {hasGrimoireAccess('quiz') ? (
                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                            {isQuizMastered ? <span className="text-amber-500 flex items-center gap-1"><Star size={12} fill="currentColor"/> Mastered</span> : 'Unlocked'}
+                           {isQuizMastered ? <span className="text-amber-500 flex items-center gap-1"><Star size={12} fill="currentColor"/> {t.mastered}</span> : t.unlocked}
                         </div>
                      ) : (
                         <div className="flex items-center justify-between mt-auto">
@@ -1001,11 +1052,12 @@ export default function ECGGame({ onBack }) {
                         <SplitSquareHorizontal size={24} />
                      </div>
                      <h3 className="text-xl font-bold mb-2">{t.compareMode}</h3>
-                     <p className="text-sm text-slate-400 mb-6">Side-by-side analysis against normal baseline.</p>
+                     {/* 🔥 FIXED: Translation */}
+                     <p className="text-sm text-slate-400 mb-6">{t.sideBySide}</p>
                      
                      {hasGrimoireAccess('compare') ? (
                         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-green-400">
-                            Unlocked
+                           {t.unlocked}
                         </div>
                      ) : (
                         <div className="flex items-center justify-between mt-auto">
