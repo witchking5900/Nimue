@@ -100,6 +100,44 @@ export default function LabGame({ onBack }) {
       return stats;
   }, [allScenarios, completedIds]);
 
+  // --- HELPER TEXT FUNCTIONS (Moved up so handleAnswer can use them) ---
+  const getCaseTitle = (scenario) => {
+      if (scenario.title && scenario.title[language] && scenario.title[language].trim() !== "") {
+          return scenario.title[language];
+      }
+      if (scenario.title && scenario.title['en'] && scenario.title['en'].trim() !== "") {
+          return scenario.title['en'];
+      }
+      if (scenario.category) return scenario.category;
+      return "Unknown Potion";
+  };
+
+  const getOptionText = (option) => {
+      if (!option) return "Unknown";
+      if (typeof option.text === 'string') return option.text;
+      return option.text[language] || option.text['en'];
+  };
+
+  const getFeedbackText = (scenario, option) => {
+      // 1. Try Specific Option Feedback
+      if (option && option.feedback) {
+          const fb = typeof option.feedback === 'string' 
+              ? option.feedback 
+              : (option.feedback[language] || option.feedback['en']);
+          
+          if (fb && fb.trim() !== "") return fb;
+      }
+
+      // 2. Fallback to General Case Explanation
+      if (scenario.explanation) {
+          return typeof scenario.explanation === 'string'
+              ? scenario.explanation
+              : (scenario.explanation[language] || scenario.explanation['en']);
+      }
+
+      return "";
+  };
+
   // --- HANDLERS ---
 
   // 1. Start from Menu
@@ -113,18 +151,13 @@ export default function LabGame({ onBack }) {
 
   // 2. The Logic to Pick a Case
   const loadRandomCase = (category, currentCaseId = null) => {
-    // Get all cases for this category
     const catCases = allScenarios.filter(s => (s.category || 'Uncategorized') === category);
-    
-    // Filter out the CURRENT case so we don't get the same one immediately
     const availableCases = currentCaseId 
         ? catCases.filter(s => s.id !== currentCaseId) 
         : catCases;
 
     if (availableCases.length === 0) {
-        // If this was the only case in the category, reload it or warn
         if (catCases.length > 0 && currentCaseId) {
-             // Just reload the same one if it's the only one exists
              setActiveCase(catCases[0]);
              setSelectedOption(null);
              return;
@@ -132,12 +165,8 @@ export default function LabGame({ onBack }) {
         return;
     }
 
-    // Filter for cases NOT yet done
     const unfinished = availableCases.filter(s => !completedIds.has(s.id));
-
-    // Priority: Unfinished -> Random from Pool
     const pool = unfinished.length > 0 ? unfinished : availableCases;
-
     const randomScenario = pool[Math.floor(Math.random() * pool.length)];
 
     setActiveCase(randomScenario);
@@ -150,7 +179,8 @@ export default function LabGame({ onBack }) {
       loadRandomCase(activeCase.category || 'Uncategorized', activeCase.id);
   };
 
-  const handleAnswer = (option) => {
+  // 🔥 UPDATED: HANDLE ANSWER WITH DB SAVE 🔥
+  const handleAnswer = async (option) => {
     if (selectedOption) return;
     if (hearts <= 0) {
        alert(text.noEnergy);
@@ -160,6 +190,7 @@ export default function LabGame({ onBack }) {
     setSelectedOption(option);
     
     if (option.correct) {
+      // --- SUCCESS LOGIC ---
       const isFirstTime = !completedIds.has(activeCase.id);
       if (isFirstTime) {
           completeActivity(activeCase.id, 5);
@@ -167,47 +198,65 @@ export default function LabGame({ onBack }) {
           completeActivity(activeCase.id, 0); 
       }
     } else {
+      // --- FAILURE LOGIC ---
       takeDamage();
+
+      // 🛑 SAVE MISTAKE TO DB 🛑
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && activeCase) {
+          try {
+              // 1. Find Correct Option for the snapshot
+              const correctOpt = activeCase.options.find(o => o.correct);
+
+              // 2. Format the Lab Values into a readable string for "Question"
+              const valuesList = activeCase.values
+                  .map(v => `${v.name}: ${v.value} (${v.status})`)
+                  .join('\n');
+
+              // 3. Create Snapshot
+              const snapshot = {
+                  title: getCaseTitle(activeCase),
+                  question: `Analyze Results:\n${valuesList}`, // Shows the lab values
+                  userAnswer: getOptionText(option),
+                  userFeedback: getFeedbackText(activeCase, option),
+                  correctAnswer: getOptionText(correctOpt),
+                  correctFeedback: getFeedbackText(activeCase, correctOpt)
+              };
+
+              // 4. Check for existing mistake
+              const { data: existing } = await supabase
+                  .from('user_mistakes')
+                  .select('id, mistake_count')
+                  .eq('user_id', user.id)
+                  .eq('question_id', activeCase.id) 
+                  .single();
+
+              if (existing) {
+                  // Update Count
+                  await supabase
+                      .from('user_mistakes')
+                      .update({ 
+                          mistake_count: existing.mistake_count + 1,
+                          created_at: new Date().toISOString()
+                      })
+                      .eq('id', existing.id);
+              } else {
+                  // Insert New
+                  await supabase
+                      .from('user_mistakes')
+                      .insert({
+                          user_id: user.id,
+                          question_id: activeCase.id,
+                          game_type: 'clinical', // Tagged as Clinical/Lab
+                          mistake_count: 1,
+                          question_snapshot: snapshot
+                      });
+              }
+          } catch (err) {
+              console.error("Error saving lab mistake:", err);
+          }
+      }
     }
-  };
-
-  // --- HELPER TEXT ---
-  const getCaseTitle = (scenario) => {
-      if (scenario.title && scenario.title[language] && scenario.title[language].trim() !== "") {
-          return scenario.title[language];
-      }
-      if (scenario.title && scenario.title['en'] && scenario.title['en'].trim() !== "") {
-          return scenario.title['en'];
-      }
-      if (scenario.category) return scenario.category;
-      return "Unknown Potion";
-  };
-
-  const getOptionText = (option) => {
-      if (typeof option.text === 'string') return option.text;
-      return option.text[language] || option.text['en'];
-  };
-
-  // FIX: Get Specific Option Feedback if available, fallback to General Explanation
-  const getFeedbackText = (scenario, option) => {
-      // 1. Try Specific Option Feedback
-      if (option && option.feedback) {
-          const fb = typeof option.feedback === 'string' 
-              ? option.feedback 
-              : (option.feedback[language] || option.feedback['en']);
-          
-          // Only return if it's not empty/null
-          if (fb && fb.trim() !== "") return fb;
-      }
-
-      // 2. Fallback to General Case Explanation
-      if (scenario.explanation) {
-          return typeof scenario.explanation === 'string'
-              ? scenario.explanation
-              : (scenario.explanation[language] || scenario.explanation['en']);
-      }
-
-      return "";
   };
 
   // --- MENU VIEW ---
@@ -407,7 +456,6 @@ export default function LabGame({ onBack }) {
                         <h3 className="font-bold">
                             {selectedOption.correct ? text.correct : text.wrong}
                         </h3>
-                        {/* Show +5 XP badge if correct AND first time */}
                         {selectedOption.correct && !completedIds.has(activeCase.id) && (
                             <span className="text-xs font-bold bg-yellow-400 text-black px-2 py-1 rounded-full animate-bounce">
                                 +5 XP
@@ -415,12 +463,10 @@ export default function LabGame({ onBack }) {
                         )}
                     </div>
                     
-                    {/* FIX: Use helper function to display specific feedback */}
                     <p className="text-sm opacity-90">
                         {getFeedbackText(activeCase, selectedOption)}
                     </p>
                     
-                    {/* NEXT BUTTON (Triggers NEXT, not EXIT) */}
                     <button 
                         onClick={handleNextCase}
                         className="mt-4 w-full py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition"

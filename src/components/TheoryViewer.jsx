@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 // --- CONFIGURATION ---
-const QUIZ_XP_REWARD = 100; // Updated to 100 XP
+const QUIZ_XP_REWARD = 100; 
 
 export default function TheoryViewer({ onBack }) {
   const { theme, language } = useTheme();
@@ -173,16 +173,79 @@ export default function TheoryViewer({ onBack }) {
     
     // Only grant XP if 100% score AND hasn't been mastered before
     if (scorePercent === 100 && !completedIds.has(masteryId)) {
-        await completeActivity(masteryId, QUIZ_XP_REWARD); // Uses Config Value (100)
+        await completeActivity(masteryId, QUIZ_XP_REWARD); 
         setShowMasteryModal(true); 
     }
     setQuizState(prev => ({ ...prev, showResults: true }));
   };
 
-  const handleAnswer = (optionId, correctId) => {
-    if (quizState.selectedAnswer) return;
+  // 🔥 UPDATED: HANDLE ANSWER & SAVE MISTAKES TO DB 🔥
+  const handleAnswer = async (optionId, correctId) => {
+    if (quizState.selectedAnswer) return; // Prevent double clicking
+    
     const isCorrect = optionId === correctId;
-    setQuizState(prev => ({ ...prev, selectedAnswer: optionId, score: isCorrect ? prev.score + 1 : prev.score }));
+    
+    // Update Local State
+    setQuizState(prev => ({ 
+        ...prev, 
+        selectedAnswer: optionId, 
+        score: isCorrect ? prev.score + 1 : prev.score 
+    }));
+
+    // IF WRONG: Save to Database for Grimoire
+    if (!isCorrect) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && selectedTopic) {
+            const currentQ = selectedTopic.quiz[quizState.currentQuestionIndex];
+            const selectedOpt = currentQ.options.find(o => o.id === optionId);
+            const correctOpt = currentQ.options.find(o => o.id === correctId);
+
+            // Create Snapshot for Grimoire
+            const snapshot = {
+                title: getContent(selectedTopic.title),
+                question: getContent(currentQ.question),
+                userAnswer: getContent(selectedOpt?.text),
+                userFeedback: getContent(selectedOpt?.feedback),
+                correctAnswer: getContent(correctOpt?.text),
+                correctFeedback: getContent(correctOpt?.feedback)
+            };
+
+            // Use RPC to Upsert (Increment count if exists) OR Insert
+            try {
+                // 1. Try to find existing mistake for this question
+                const { data: existing } = await supabase
+                    .from('user_mistakes')
+                    .select('id, mistake_count')
+                    .eq('user_id', user.id)
+                    .eq('question_id', currentQ.id) // Assuming Questions have IDs, otherwise use Index or Title hash
+                    .single();
+
+                if (existing) {
+                    // Update Count
+                    await supabase
+                        .from('user_mistakes')
+                        .update({ 
+                            mistake_count: existing.mistake_count + 1,
+                            created_at: new Date().toISOString() // Refresh timestamp to show at top
+                        })
+                        .eq('id', existing.id);
+                } else {
+                    // Insert New Mistake
+                    await supabase
+                        .from('user_mistakes')
+                        .insert({
+                            user_id: user.id,
+                            question_id: currentQ.id || `q_${Date.now()}`, // Fallback ID if missing
+                            game_type: 'theory',
+                            mistake_count: 1,
+                            question_snapshot: snapshot
+                        });
+                }
+            } catch (err) {
+                console.error("Error saving mistake:", err);
+            }
+        }
+    }
   };
 
   const nextQuestion = () => {
@@ -413,7 +476,6 @@ export default function TheoryViewer({ onBack }) {
                     <Crown size={48} /><Sparkles className="absolute -top-2 -right-2 text-yellow-400 animate-spin-slow" size={32} />
                 </div>
                 <h2 className={`relative text-2xl font-black mb-2 uppercase tracking-wide ${isMagical ? 'text-amber-400' : 'text-blue-600'}`}>{language === 'ka' ? "ჩანაწერი შესწავლილია" : "Inscription Mastered"}</h2>
-                {/* Updated XP Text */}
                 <div className={`relative inline-block px-4 py-1 rounded-full text-sm font-bold mb-8 ${isMagical ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>+{QUIZ_XP_REWARD} XP</div>
                 <button onClick={() => setShowMasteryModal(false)} className={`relative w-full py-3 rounded-xl font-bold transition-transform active:scale-95 ${isMagical ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>{language === 'ka' ? "გაგრძელება" : "Continue"}</button>
             </div>
