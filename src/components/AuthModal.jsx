@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { supabase } from '../supabaseClient'; // ✅ Ensure this is imported
 import { Lock, Key, Mail, Wand2, Activity, Globe, Scroll, X, ShieldAlert, User, Feather, Stethoscope, Check, Send, ArrowLeft } from 'lucide-react'; 
 
 function AuthModal() {
@@ -33,17 +32,23 @@ function AuthModal() {
   // --- TEXT DICTIONARY ---
   const t = {
     en: {
+      // Step 1: Language (Static, no translation needed in dictionary)
+      // Step 2: Theme
       chooseTheme: "Choose your approach",
       stdName: "Standard",
       stdDesc: "Medical Professional",
       magName: "Magical",
       magDesc: "Arcane Healer",
+      // Titles
       titleMagic: authMode === 'login' ? "Identify Thyself" : "Inscribe Your Soul",
       titleStd: authMode === 'login' ? "Medical Login" : "Staff Registration",
+      // Buttons
       btnMagic: authMode === 'login' ? "Open the Gate" : "Bind Soul",
       btnStd: authMode === 'login' ? "Sign In" : "Register",
+      // Switches
       switchMagic: authMode === 'login' ? "No Grimoire? Create one." : "Already bound? Enter.",
       switchStd: authMode === 'login' ? "No account? Sign up." : "Have an account? Login.",
+      // Forgot Password
       forgotLinkMagic: "Lost your memory spell?",
       forgotLinkStd: "Forgot Password?",
       resetTitleMagic: "Restore Memory",
@@ -52,11 +57,13 @@ function AuthModal() {
       resetBtnStd: "Send Reset Link",
       backMagic: "Return to Gate",
       backStd: "Back to Login",
+      // Success
       successTitleStd: "Check your Inbox",
       successTitleMagic: "Owl Dispatched",
       successBodyStd: "We have sent a confirmation link to your email. Please verify your account to continue.",
       successBodyMagic: "A carrier owl is on its way to your dwelling. Break the seal (click the link) to complete the binding ritual.",
       okBtn: "Okay",
+      // Errors/Labels
       emailPlaceholder: "Email Address",
       passwordPlaceholder: "Password",
       confirmPass: "Confirm Password",
@@ -76,17 +83,22 @@ function AuthModal() {
       agreeBtnMagic: "I Swear"
     },
     ka: {
+      // Step 2: Theme
       chooseTheme: "აირჩიეთ მიდგომა",
       stdName: "სტანდარტული",
       stdDesc: "სამედიცინო პერსონალი",
       magName: "ჯადოსნური",
       magDesc: "მისტიკური მკურნალი",
+      // Titles
       titleMagic: authMode === 'login' ? "წარადგინე თავი" : "სულის ჩაწერა",
       titleStd: authMode === 'login' ? "ავტორიზაცია" : "რეგისტრაცია",
+      // Buttons
       btnMagic: authMode === 'login' ? "კარიბჭის გახსნა" : "სულის მიბმა",
       btnStd: authMode === 'login' ? "შესვლა" : "რეგისტრაცია",
+      // Switches
       switchMagic: authMode === 'login' ? "არ გაქვს გრიმუარი? შექმენი." : "უკვე გაქვს? შემოდი.",
       switchStd: authMode === 'login' ? "არ გაქვს ანგარიში? დარეგისტრირდი." : "გაქვს ანგარიში? შედი.",
+      // Forgot Password
       forgotLinkMagic: "დაგავიწყდა შელოცვა?",
       forgotLinkStd: "დაგავიწყდა პაროლი?",
       resetTitleMagic: "მეხსიერების აღდგენა",
@@ -95,11 +107,13 @@ function AuthModal() {
       resetBtnStd: "ბმულის გაგზავნა",
       backMagic: "კარიბჭესთან დაბრუნება",
       backStd: "უკან დაბრუნება",
+      // Success
       successTitleStd: "შეამოწმეთ ელ-ფოსტა",
       successTitleMagic: "ბუ გამოგზავნილია",
       successBodyStd: "ჩვენ გამოგიგზავნეთ დადასტურების ბმული. გთხოვთ დაადასტუროთ ანგარიში.",
       successBodyMagic: "საფოსტო ბუ უკვე გზაშია. გატეხეთ ბეჭედი (დააჭირეთ ბმულს) რიტუალის დასასრულებლად.",
       okBtn: "კარგი",
+      // Errors/Labels
       emailPlaceholder: "ელ-ფოსტა",
       passwordPlaceholder: "პაროლი",
       confirmPass: "დაადასტურეთ პაროლი",
@@ -127,7 +141,6 @@ function AuthModal() {
   const handleThemeSelect = (selectedTheme) => { setTheme(selectedTheme); setView('auth'); };
   const toggleLanguage = () => { setLanguage(prev => prev === 'en' ? 'ka' : 'en'); };
 
-  // 🔥 UPDATED: HANDLES PROFILE CREATION MANUALLY
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -142,33 +155,8 @@ function AuthModal() {
         if (password !== confirmPassword) throw new Error(text.errorPass);
         if (!agreedToTerms) throw new Error(text.errorTerms);
 
-        // 1. Create Auth User
-        const { data: authData, error: authError } = await signUp(email, password, username, fullName);
-        if (authError) throw authError;
-
-        // 2. 🔥 MANUAL PROFILE CREATION 🔥
-        // This ensures the user appears in the 'public.profiles' table immediately
-        if (authData?.user) {
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .insert({
-                    id: authData.user.id, // Link to Auth ID
-                    email: email,
-                    full_name: fullName,
-                    nickname: username,
-                    tier: 'apprentice', // Default Rank
-                    xp: 0,
-                    hearts: 3,
-                    role: 'user'
-                });
-
-            // Ignore "duplicate key" errors in case a Trigger already did it
-            if (profileError && !profileError.message.includes('duplicate key')) {
-                console.error("Profile creation failed:", profileError);
-                // We don't throw here, to allow the success screen to show
-            }
-        }
-        
+        const { error } = await signUp(email, password, username, fullName);
+        if (error) throw error;
         setAuthMode('success'); 
       }
     } catch (err) {
@@ -185,7 +173,7 @@ function AuthModal() {
     setSuccessMsg(null);
 
     try {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await auth.supabase.auth.resetPasswordForEmail(email, {
             redirectTo: window.location.origin + '/update-password',
         });
         if (error) throw error;
@@ -200,7 +188,7 @@ function AuthModal() {
   const bgImageStyle = { backgroundImage: "url('/background.jpg')" };
 
   // ==========================================
-  // VIEW 1: LANGUAGE
+  // VIEW 1: LANGUAGE (Static is fine here as it is the selector)
   // ==========================================
   if (view === 'language') {
     return (
@@ -225,13 +213,14 @@ function AuthModal() {
   }
 
   // ==========================================
-  // VIEW 2: THEME
+  // VIEW 2: THEME (Updated to use Dynamic Text)
   // ==========================================
   if (view === 'theme') {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-cover bg-center bg-no-repeat" style={bgImageStyle}>
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
         <div className="w-full max-w-2xl animate-in slide-in-from-right duration-300 relative z-10">
+            {/* 🔥 FIXED: Uses dictionary for title based on previous language selection */}
             <h2 className="text-3xl font-bold text-center text-white mb-10">{text.chooseTheme}</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -310,6 +299,7 @@ function AuthModal() {
                 <form onSubmit={handlePasswordReset} className="space-y-4">
                     <div className="relative">
                         <Mail className="absolute left-3 top-3 opacity-50" size={18} />
+                        {/* 🔥 FIXED: Placeholder uses dictionary */}
                         <input type="email" placeholder={text.emailPlaceholder} value={email} onChange={(e) => setEmail(e.target.value)} className={`w-full pl-10 p-3 rounded-lg border focus:outline-none focus:ring-2 transition-all ${isMagical ? 'bg-slate-800 border-slate-700 focus:border-amber-500 focus:ring-amber-500/20' : 'bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20'}`} required />
                     </div>
                     <button type="submit" disabled={loading} className={`w-full py-3 rounded-lg font-bold text-lg transition-all transform hover:scale-[1.02] active:scale-95 mt-4 ${isMagical ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-[0_0_15px_rgba(217,119,6,0.5)]' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`}>
@@ -362,11 +352,13 @@ function AuthModal() {
 
                 <div className="relative">
                     <Mail className="absolute left-3 top-3 opacity-50" size={18} />
+                    {/* 🔥 FIXED: Placeholder uses dictionary */}
                     <input type="email" placeholder={text.emailPlaceholder} value={email} onChange={(e) => setEmail(e.target.value)} className={`w-full pl-10 p-3 rounded-lg border focus:outline-none focus:ring-2 transition-all ${isMagical ? 'bg-slate-800 border-slate-700 focus:border-amber-500 focus:ring-amber-500/20' : 'bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20'}`} required />
                 </div>
 
                 <div className="relative">
                     <Key className="absolute left-3 top-3 opacity-50" size={18} />
+                    {/* 🔥 FIXED: Placeholder uses dictionary */}
                     <input type="password" placeholder={text.passwordPlaceholder} value={password} onChange={(e) => setPassword(e.target.value)} className={`w-full pl-10 p-3 rounded-lg border focus:outline-none focus:ring-2 transition-all ${isMagical ? 'bg-slate-800 border-slate-700 focus:border-amber-500 focus:ring-amber-500/20' : 'bg-slate-50 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20'}`} required />
                 </div>
 
