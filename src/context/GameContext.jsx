@@ -227,7 +227,61 @@ export function GameProvider({ children }) {
     saveToCloud({ xp: newXp });
   };
 
-//dan
+
+const completeActivity = async (activityId, amount) => {
+    const safeId = String(activityId);
+    
+    // 1. Fast Local Check
+    if (completedIds.has(safeId)) return false; 
+
+    // 2. SERVER FIREWALL
+    if (user && amount > 0) {
+        const { data: existing, error: selectError } = await supabase
+            .from('activity_log')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('activity_id', safeId);
+
+        // Check if DB blocked our read request
+        if (selectError) {
+            console.error("🚨 DB READ ERROR: Supabase blocked the check. You likely need to enable a 'SELECT' RLS policy on the activity_log table.", selectError.message);
+        } 
+        // Exploit blocked successfully
+        else if (existing && existing.length > 0) {
+            console.warn("🛡️ EXPLOIT BLOCKED! This account already completed this activity on another device.");
+            
+            // Sync local state to show the UI checkmark, but block XP
+            const newSet = new Set(completedIds).add(safeId);
+            setCompletedIds(newSet);
+            localStorage.setItem(`nimue_completed_${user.id}`, JSON.stringify([...newSet]));
+            return false;
+        }
+    }
+
+    // 3. GRANT XP LOCALLY
+    const newSet = new Set(completedIds).add(safeId);
+    setCompletedIds(newSet);
+    localStorage.setItem(`nimue_completed_${user?.id}`, JSON.stringify([...newSet]));
+    
+    gainXp(amount);
+    
+    // 4. LOG TO SERVER
+    if (user) {
+        const { error: insertError } = await supabase
+            .from('activity_log')
+            .insert({ user_id: user.id, activity_id: safeId, xp_gained: amount });
+
+        // Check if DB blocked our write request
+        if (insertError) {
+            console.error("🚨 DB WRITE ERROR: Supabase failed to save this completion. You likely need to enable an 'INSERT' RLS policy on the activity_log table.", insertError.message);
+        }
+    }
+    
+    return true; 
+  };
+
+
+/*dan
 const completeActivity = async (activityId, amount) => {
     const safeId = String(activityId);
     
@@ -270,7 +324,7 @@ const completeActivity = async (activityId, amount) => {
     return true; 
   };
 
-//mde
+/*mde
 
 /*replaced
 
