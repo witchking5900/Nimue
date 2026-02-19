@@ -237,7 +237,7 @@ export default function TheoryViewer({ onBack }) {
       } catch (err) { addToast("Error: " + err.message); }
   };
 
-  // --- QUIZ LOGIC ---
+/*  // --- QUIZ LOGIC ---
   const finishQuiz = async () => {
     const masteryId = `${selectedTopic.id}_mastered`;
     const scorePercent = Math.round((quizState.score / selectedTopic.quiz.length) * 100);
@@ -250,6 +250,47 @@ export default function TheoryViewer({ onBack }) {
     setQuizState(prev => ({ ...prev, showResults: true }));
   };
 
+
+   *///replaced
+  //dan
+  // --- QUIZ LOGIC ---
+  const finishQuiz = async () => {
+    const masteryId = `${selectedTopic.id}_mastered`;
+    const scorePercent = Math.round((quizState.score / selectedTopic.quiz.length) * 100);
+    
+    // 1. Initial Local Check
+    if (scorePercent === 100 && !completedIds.has(masteryId)) {
+        try {
+            // 2. SERVER-SIDE VERIFICATION 
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (user) {
+                // Check the activity_log table directly to see if this masteryId exists for this user
+                const { data: existingLog } = await supabase
+                    .from('activity_log')
+                    .select('id') 
+                    .eq('user_id', user.id)
+                    .eq('activity_id', masteryId)
+                    .maybeSingle(); // Returns null if no row is found
+
+                // 3. Only grant XP if the SERVER confirms there is no log of them doing this
+                if (!existingLog) {
+                    await completeActivity(masteryId, QUIZ_XP_REWARD); 
+                    setShowMasteryModal(true); 
+                } else {
+                    console.log("Activity already mastered and logged on server.");
+                    // Optional: Update local state to match server so it doesn't check again
+                    setCompletedIds(prev => new Set(prev).add(masteryId));
+                }
+            }
+        } catch (error) {
+            console.error("Error verifying mastery status:", error);
+        }
+    }
+    
+    setQuizState(prev => ({ ...prev, showResults: true }));
+  };
+  //mde
   // 🔥 UPDATED: HANDLE ANSWER & SAVE MISTAKES TO DB 🔥
   const handleAnswer = async (optionId, correctId) => {
     if (quizState.selectedAnswer) return; // Prevent double clicking
