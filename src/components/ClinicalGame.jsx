@@ -259,7 +259,7 @@ export default function ClinicalGame({ onBack }) {
       handleCaseFinish();
     }
   };
-
+/* replaced
   const handleCaseFinish = () => {
       setIsFinished(true);
       const caseId = activeScenario.id;
@@ -280,6 +280,55 @@ export default function ClinicalGame({ onBack }) {
           completeActivity(caseId, 0);
       }
   };
+*/
+
+//dan
+const handleCaseFinish = async () => {
+      setIsFinished(true);
+      const caseId = activeScenario.id;
+      const masteryId = `${caseId}_mastered`;
+      
+      if (!hasMadeMistake) {
+          setShowPerfectModal(true);
+          playSound('correct'); 
+          
+          // 1. Initial Local Check
+          const isMasteredLocally = completedIds.has(masteryId);
+          let xpToGrant = activeGrimoire.xpReward || 0;
+
+          if (!isMasteredLocally && xpToGrant > 0) {
+              try {
+                  // 2. SERVER-SIDE VERIFICATION
+                  if (user) {
+                      const { data: existingLog } = await supabase
+                          .from('activity_log')
+                          .select('id') 
+                          .eq('user_id', user.id)
+                          .eq('activity_id', masteryId)
+                          .maybeSingle();
+
+                      // 3. Only grant XP if the SERVER confirms it hasn't been logged
+                      if (!existingLog) {
+                          await completeActivity(masteryId, xpToGrant); 
+                          addToast(`${text.caseMastered} +${xpToGrant} XP`, 'success');
+                      } else {
+                          console.log("Activity already mastered and logged on server.");
+                          // Sync local state by completing it with 0 XP
+                          await completeActivity(masteryId, 0); 
+                      }
+                  }
+              } catch (error) {
+                  console.error("Error verifying mastery status:", error);
+                  await completeActivity(masteryId, 0); // Safe fallback
+              }
+          } else {
+              await completeActivity(masteryId, 0);
+          }
+      } else {
+          completeActivity(caseId, 0);
+      }
+  };
+//mde
 
   const handleRevealClick = (stepId) => {
     if (revealedHints[stepId]) return;
