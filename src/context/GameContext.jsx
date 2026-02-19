@@ -227,30 +227,30 @@ export function GameProvider({ children }) {
     saveToCloud({ xp: newXp });
   };
 
-
+//dan
 const completeActivity = async (activityId, amount) => {
     const safeId = String(activityId);
+    console.log(`[XP System] 1. Attempting to complete: ${safeId} for ${amount} XP`);
     
     // 1. Fast Local Check
-    if (completedIds.has(safeId)) return false; 
+    if (completedIds.has(safeId)) {
+        console.log(`[XP System] 2. Stopped! Local device memory says it's already done.`);
+        return false; 
+    }
 
     // 2. SERVER FIREWALL
     if (user && amount > 0) {
+        console.log(`[XP System] 3. Asking Supabase if user already did ${safeId}...`);
         const { data: existing, error: selectError } = await supabase
             .from('activity_log')
             .select('id')
             .eq('user_id', user.id)
             .eq('activity_id', safeId);
 
-        // Check if DB blocked our read request
-        if (selectError) {
-            console.error("🚨 DB READ ERROR: Supabase blocked the check. You likely need to enable a 'SELECT' RLS policy on the activity_log table.", selectError.message);
-        } 
-        // Exploit blocked successfully
-        else if (existing && existing.length > 0) {
-            console.warn("🛡️ EXPLOIT BLOCKED! This account already completed this activity on another device.");
-            
-            // Sync local state to show the UI checkmark, but block XP
+        console.log(`[XP System] 4. Supabase Reply -> Data:`, existing, `| Error:`, selectError);
+
+        if (existing && existing.length > 0) {
+            console.warn(`[XP System] 5. 🛑 EXPLOIT BLOCKED! Found in DB.`);
             const newSet = new Set(completedIds).add(safeId);
             setCompletedIds(newSet);
             localStorage.setItem(`nimue_completed_${user.id}`, JSON.stringify([...newSet]));
@@ -258,29 +258,25 @@ const completeActivity = async (activityId, amount) => {
         }
     }
 
-    // 3. GRANT XP LOCALLY
+    console.log(`[XP System] 6. All clear! Granting ${amount} XP locally...`);
     const newSet = new Set(completedIds).add(safeId);
     setCompletedIds(newSet);
     localStorage.setItem(`nimue_completed_${user?.id}`, JSON.stringify([...newSet]));
     
     gainXp(amount);
     
-    // 4. LOG TO SERVER
+    // 3. LOG TO SERVER
     if (user) {
+        console.log(`[XP System] 7. Saving to Supabase activity_log...`);
         const { error: insertError } = await supabase
             .from('activity_log')
             .insert({ user_id: user.id, activity_id: safeId, xp_gained: amount });
 
-        // Check if DB blocked our write request
-        if (insertError) {
-            console.error("🚨 DB WRITE ERROR: Supabase failed to save this completion. You likely need to enable an 'INSERT' RLS policy on the activity_log table.", insertError.message);
-        }
+        console.log(`[XP System] 8. Insert Result -> Error:`, insertError || "None! Saved successfully.");
     }
     
     return true; 
   };
-
-
 /*dan
 const completeActivity = async (activityId, amount) => {
     const safeId = String(activityId);
