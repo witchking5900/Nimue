@@ -666,6 +666,27 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
         setIsPaused(false);
     };
 
+const handleAnswer = (rhythmId) => {
+        // Removed the hearts check so players can keep practicing
+        const isCorrect = rhythmId === quizState.targetRhythm;
+        
+        if (isCorrect) {
+            // gainXp(2) has been removed
+            playSound('correct');
+        } else {
+            // takeDamage() has been removed
+            playSound('wrong');
+        }
+
+        setQuizState(prev => ({ 
+            ...prev, 
+            currentAnswer: rhythmId, 
+            score: isCorrect ? prev.score + 1 : prev.score, 
+            total: prev.total + 1, 
+            showResult: true 
+        }));
+    };    
+/*replaced
     const handleAnswer = (rhythmId) => {
         if (hearts <= 0) return;
         const isCorrect = rhythmId === quizState.targetRhythm;
@@ -686,7 +707,7 @@ const QuizGrimoire = ({ t, lang, onBack, hearts, gainXp, takeDamage, onMastery }
             showResult: true 
         }));
     };
-
+*/
     const handleNextButton = () => {
         startNextRound(quizState.questionQueue, quizState.score, quizState.total);
     };
