@@ -266,13 +266,14 @@ function Dashboard() {
 }
 
 export default function App() {
+  /* replaced
   return (
     <AuthProvider>
       <ThemeProvider>
         <ToastProvider>
           <GameProvider>
             <SecurityOverlay>
-              {/* ▼▼▼ AUTO-DOWNGRADER ▼▼▼ */}
+              {// ▼▼▼ AUTO-DOWNGRADER ▼▼▼ }
               <SubscriptionManager /> 
               
               <Routes>
@@ -281,11 +282,11 @@ export default function App() {
                 <Route path="/about" element={<About />} />
                 <Route path="/legal" element={<Legal />} />
 
-                {/* ▼▼▼ NEW PAYMENT ROUTES ▼▼▼ */}
+                {// ▼▼▼ NEW PAYMENT ROUTES ▼▼▼}
                 <Route path="/payment-success" element={<PaymentSuccess />} />
                 <Route path="/payment-fail" element={<PaymentFailure />} />
                 
-                {/* ▼▼▼ PASSWORD UPDATE ROUTE ADDED HERE ▼▼▼ */}
+                {// ▼▼▼ PASSWORD UPDATE ROUTE ADDED HERE ▼▼▼}
                 <Route path="/update-password" element={<UpdatePassword />} />
 
                 <Route path="/pricing" element={
@@ -306,4 +307,40 @@ export default function App() {
       </ThemeProvider>
     </AuthProvider>
   );
+  */
+
+  //dan
+  return (
+    <SecurityOverlay>
+      {/* ▼▼▼ AUTO-DOWNGRADER ▼▼▼ */}
+      <SubscriptionManager /> 
+      
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/community" element={<CommunityHub />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/legal" element={<Legal />} />
+
+        {/* ▼▼▼ NEW PAYMENT ROUTES ▼▼▼ */}
+        <Route path="/payment-success" element={<PaymentSuccess />} />
+        <Route path="/payment-fail" element={<PaymentFailure />} />
+        
+        {/* ▼▼▼ PASSWORD UPDATE ROUTE ADDED HERE ▼▼▼ */}
+        <Route path="/update-password" element={<UpdatePassword />} />
+
+        <Route path="/pricing" element={
+            <>
+                <PricingNavbarWrapper /> 
+                <PricingPage />
+            </>
+        } />
+        <Route path="/admin" element={<AdminLogin />} />
+        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/security" element={<SecurityManager />} />
+        <Route path="/grimoire" element={<GrimoireRoute />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </SecurityOverlay>
+  );
+  //mde
 }
