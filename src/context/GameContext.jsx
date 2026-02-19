@@ -227,6 +227,53 @@ export function GameProvider({ children }) {
     saveToCloud({ xp: newXp });
   };
 
+//dan
+const completeActivity = async (activityId, amount) => {
+    const safeId = String(activityId);
+    
+    // 1. Fast Local Check
+    if (completedIds.has(safeId)) return false; 
+
+    // 2. ABSOLUTE FIREWALL (Server-Side Check)
+    if (user && amount > 0) {
+        const { data: existing, error } = await supabase
+            .from('activity_log')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('activity_id', safeId)
+            .maybeSingle();
+
+        // If DB throws an error (RLS issue) OR the row exists, block the XP
+        if (error || existing) {
+            if (error) console.error("DB Check Failed (Check your RLS SELECT policies!):", error);
+            else console.log("Exploit blocked: Activity already logged on server.");
+
+            // Sync the device locally so the crown/checkmark appears, but DO NOT grant XP
+            const newSet = new Set(completedIds).add(safeId);
+            setCompletedIds(newSet);
+            localStorage.setItem(`nimue_completed_${user.id}`, JSON.stringify([...newSet]));
+            return false;
+        }
+    }
+
+    // 3. Normal Flow (If Verified)
+    const newSet = new Set(completedIds);
+    newSet.add(safeId);
+    setCompletedIds(newSet);
+    localStorage.setItem(`nimue_completed_${user?.id}`, JSON.stringify([...newSet]));
+    
+    gainXp(amount);
+    
+    if (user) {
+        await supabase.from('activity_log').insert({ user_id: user.id, activity_id: safeId, xp_gained: amount });
+    }
+    return true; 
+  };
+
+//mde
+
+/*replaced
+
   const completeActivity = async (activityId, amount) => {
     const safeId = String(activityId);
     if (completedIds.has(safeId)) return false; 
@@ -238,6 +285,8 @@ export function GameProvider({ children }) {
     if (user) await supabase.from('activity_log').insert({ user_id: user.id, activity_id: safeId, xp_gained: amount });
     return true; 
   };
+
+  */
 
   const takeDamage = (amount = 1) => { 
       if (isInfinite) return; 
@@ -279,12 +328,43 @@ export function GameProvider({ children }) {
       return { success: true, message: "Divine Restoration Complete!" };
   };
 
+
+
+
+/*replaced
   useEffect(() => {
       if(user) {
           const saved = JSON.parse(localStorage.getItem(`nimue_completed_${user.id}`) || '[]');
           setCompletedIds(new Set(saved));
       }
   }, [user]);
+*/
+//dan
+useEffect(() => {
+      if(user) {
+          // 1. Instantly load local data for snappy UI
+          const saved = JSON.parse(localStorage.getItem(`nimue_completed_${user.id}`) || '[]');
+          setCompletedIds(new Set(saved));
+
+          // 2. SERVER SYNC: Fetch from DB so new devices know what's already done
+          const syncActivities = async () => {
+              const { data, error } = await supabase
+                  .from('activity_log')
+                  .select('activity_id')
+                  .eq('user_id', user.id);
+
+              if (data) {
+                  const serverIds = data.map(row => row.activity_id);
+                  const mergedSet = new Set([...saved, ...serverIds]);
+                  setCompletedIds(mergedSet);
+                  localStorage.setItem(`nimue_completed_${user.id}`, JSON.stringify([...mergedSet]));
+              }
+          };
+          syncActivities();
+      }
+  }, [user]);
+//mde
+
 
   const value = {
     profile, 
