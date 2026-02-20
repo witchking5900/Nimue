@@ -99,10 +99,55 @@ export default function SecurityManager() {
             return alert("Invalid choice.");
     }
 
-    // Update Database
+    // --- NEW: SYNCHRONIZED DATABASE UPDATE ---
+    let profileUpdates = { tier: newTier };
+
+    if (newTier === 'apprentice') {
+        // 1. DOWNGRADE: Revoke profile status and force 'expired'
+        profileUpdates.is_subscribed = false;
+        profileUpdates.subscription_end = null;
+        profileUpdates.subscription_status = 'expired'; // Explicitly matching your DB
+        
+        await supabase.from('subscriptions')
+            .update({ 
+                status: 'expired', // Changed from 'canceled' to 'expired'
+                current_period_end: new Date(Date.now() - 86400000).toISOString() // Expired yesterday
+            })
+            .eq('user_id', user.id)
+            .eq('status', 'active'); // Only touch active ones
+            
+    } else {
+        // 2. UPGRADE: Grant profile status and create a valid "dummy" subscription
+        profileUpdates.is_subscribed = true;
+        profileUpdates.subscription_status = 'active'; 
+        
+        // Give 10 years of access for admin-granted roles
+        const futureDate = new Date();
+        futureDate.setFullYear(futureDate.getFullYear() + 10); 
+        profileUpdates.subscription_end = futureDate.toISOString();
+
+        // First, expire any old stuck subscriptions...
+        await supabase.from('subscriptions')
+            .update({ status: 'expired' }) // Changed from 'canceled'
+            .eq('user_id', user.id);
+
+        // ...Then insert a fresh "Active" one so check_and_downgrade accepts the new role
+        await supabase.from('subscriptions').insert({
+            user_id: user.id,
+            status: 'active',
+            tier: newTier,
+            plan_id: 'admin_granted',
+            current_period_start: new Date().toISOString(),
+            current_period_end: futureDate.toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        });
+    }
+
+    // Execute Database Update for Profile
     const { error } = await supabase
         .from('profiles')
-        .update({ tier: newTier }) // We just update tier, keeping subscription logic simple/infinite
+        .update(profileUpdates)
         .eq('id', user.id);
 
     if (error) {
@@ -377,7 +422,7 @@ export default function SecurityManager() {
                                           {isAppsBlocked && <span className="text-[10px] bg-purple-900/50 text-purple-200 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Lock size={8}/> APPS LOCKED</span>}
                                           {/* Show Current Rank */}
                                           <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-bold uppercase border border-slate-700">
-                                            {u.tier || 'APPRENTICE'}
+                                              {u.tier || 'APPRENTICE'}
                                           </span>
                                       </div>
                                       <div className="flex items-center gap-3 mt-1">
