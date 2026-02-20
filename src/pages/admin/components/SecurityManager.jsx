@@ -50,7 +50,7 @@ export default function SecurityManager() {
     if (data) setSearchResults(data);
   };
 
-  // --- THE PROMOTION SYSTEM (LOUD DEBUGGER) ---
+  // --- THE PROMOTION SYSTEM (RPC GOD MODE) ---
   const handlePromotion = async (user) => {
     const choice = prompt(
         `👑 GRANT ROLE FOR: ${user.email}\n` +
@@ -99,81 +99,17 @@ export default function SecurityManager() {
             return alert("Invalid choice.");
     }
 
-    console.log(`\n[DEBUG] 🚀 STARTING TIER CHANGE FOR: ${user.email} -> ${newTier.toUpperCase()}`);
-    let profileUpdates = { tier: newTier };
-
     try {
-        if (newTier === 'apprentice') {
-            console.log(`[DEBUG] 🔻 Mode: DOWNGRADE`);
-            profileUpdates.is_subscribed = false;
-            profileUpdates.subscription_end = null;
-            profileUpdates.subscription_status = 'expired';
+        console.log(`[DEBUG] Calling God-Mode RPC to set tier: ${newTier.toUpperCase()}...`);
+        
+        // --- THIS IS THE MAGIC FIX ---
+        // Let the secure backend function handle bypassing the RLS firewall!
+        const { error: rpcError } = await supabase.rpc('admin_set_user_tier', {
+            target_user_id: user.id,
+            new_tier: newTier
+        });
 
-            console.log(`[DEBUG] 1. Asking Supabase to 'expire' active subscriptions...`);
-            const { data: subData, error: subError } = await supabase
-                .from('subscriptions')
-                .update({ 
-                    status: 'expired', 
-                    current_period_end: new Date(Date.now() - 86400000).toISOString() 
-                })
-                .eq('user_id', user.id)
-                .eq('status', 'active')
-                .select(); // Ask for rows back to verify it worked
-
-            console.log(`[DEBUG] Subscriptions Reply ->`, { subData, subError });
-            
-            if (subError) {
-                console.error("🚨 DB WRITE ERROR: Supabase BLOCKED the subscription update! (Likely an RLS policy issue).", subError);
-            } else if (!subData || subData.length === 0) {
-                console.warn("⚠️ WARNING: Supabase returned 0 rows. It either found no active subscriptions, OR an RLS 'UPDATE/SELECT' policy hid them from the Admin Console.");
-            }
-
-        } else {
-            console.log(`[DEBUG] 🔺 Mode: UPGRADE`);
-            profileUpdates.is_subscribed = true;
-            profileUpdates.subscription_status = 'active'; 
-            
-            const futureDate = new Date();
-            futureDate.setFullYear(futureDate.getFullYear() + 10); 
-            profileUpdates.subscription_end = futureDate.toISOString();
-
-            console.log(`[DEBUG] 1a. Expiring old stuck subscriptions...`);
-            const { data: expData, error: expError } = await supabase
-                .from('subscriptions')
-                .update({ status: 'expired' })
-                .eq('user_id', user.id)
-                .select();
-            
-            console.log(`[DEBUG] Expire Reply ->`, { expData, expError });
-
-            console.log(`[DEBUG] 1b. Inserting new 'dummy' active subscription...`);
-            const { data: insData, error: insError } = await supabase
-                .from('subscriptions')
-                .insert({
-                    user_id: user.id,
-                    status: 'active',
-                    tier: newTier,
-                    plan_id: 'admin_granted',
-                    current_period_start: new Date().toISOString(),
-                    current_period_end: futureDate.toISOString(),
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .select();
-            
-            console.log(`[DEBUG] Insert Reply ->`, { insData, insError });
-        }
-
-        console.log(`[DEBUG] 2. Updating User Profile...`, profileUpdates);
-        const { data: profData, error: profError } = await supabase
-            .from('profiles')
-            .update(profileUpdates)
-            .eq('id', user.id)
-            .select();
-
-        console.log(`[DEBUG] Profile Reply ->`, { profData, profError });
-
-        if (profError) throw profError;
+        if (rpcError) throw rpcError;
 
         console.log(`[DEBUG] 3. Sending Notification...`);
         await supabase.from('notifications').insert({
@@ -181,7 +117,7 @@ export default function SecurityManager() {
         });
 
         console.log(`[DEBUG] ✅ COMPLETE!`);
-        alert(`User updated successfully to ${newTier.toUpperCase()}. Check console for logs.`);
+        alert(`User successfully updated to ${newTier.toUpperCase()}!`);
         searchUser();
 
     } catch (err) {
