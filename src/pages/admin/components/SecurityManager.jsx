@@ -50,7 +50,7 @@ export default function SecurityManager() {
     if (data) setSearchResults(data);
   };
 
-  // --- THE PROMOTION SYSTEM (ROLES) ---
+  // --- THE PROMOTION SYSTEM (LOUD DEBUGGER) ---
   const handlePromotion = async (user) => {
     const choice = prompt(
         `👑 GRANT ROLE FOR: ${user.email}\n` +
@@ -99,71 +99,94 @@ export default function SecurityManager() {
             return alert("Invalid choice.");
     }
 
-    // --- NEW: SYNCHRONIZED DATABASE UPDATE ---
+    console.log(`\n[DEBUG] 🚀 STARTING TIER CHANGE FOR: ${user.email} -> ${newTier.toUpperCase()}`);
     let profileUpdates = { tier: newTier };
 
-    if (newTier === 'apprentice') {
-        // 1. DOWNGRADE: Revoke profile status and force 'expired'
-        profileUpdates.is_subscribed = false;
-        profileUpdates.subscription_end = null;
-        profileUpdates.subscription_status = 'expired'; // Explicitly matching your DB
-        
-        await supabase.from('subscriptions')
-            .update({ 
-                status: 'expired', // Changed from 'canceled' to 'expired'
-                current_period_end: new Date(Date.now() - 86400000).toISOString() // Expired yesterday
-            })
-            .eq('user_id', user.id)
-            .eq('status', 'active'); // Only touch active ones
+    try {
+        if (newTier === 'apprentice') {
+            console.log(`[DEBUG] 🔻 Mode: DOWNGRADE`);
+            profileUpdates.is_subscribed = false;
+            profileUpdates.subscription_end = null;
+            profileUpdates.subscription_status = 'expired';
+
+            console.log(`[DEBUG] 1. Asking Supabase to 'expire' active subscriptions...`);
+            const { data: subData, error: subError } = await supabase
+                .from('subscriptions')
+                .update({ 
+                    status: 'expired', 
+                    current_period_end: new Date(Date.now() - 86400000).toISOString() 
+                })
+                .eq('user_id', user.id)
+                .eq('status', 'active')
+                .select(); // Ask for rows back to verify it worked
+
+            console.log(`[DEBUG] Subscriptions Reply ->`, { subData, subError });
             
-    } else {
-        // 2. UPGRADE: Grant profile status and create a valid "dummy" subscription
-        profileUpdates.is_subscribed = true;
-        profileUpdates.subscription_status = 'active'; 
-        
-        // Give 10 years of access for admin-granted roles
-        const futureDate = new Date();
-        futureDate.setFullYear(futureDate.getFullYear() + 10); 
-        profileUpdates.subscription_end = futureDate.toISOString();
+            if (subError) {
+                console.error("🚨 DB WRITE ERROR: Supabase BLOCKED the subscription update! (Likely an RLS policy issue).", subError);
+            } else if (!subData || subData.length === 0) {
+                console.warn("⚠️ WARNING: Supabase returned 0 rows. It either found no active subscriptions, OR an RLS 'UPDATE/SELECT' policy hid them from the Admin Console.");
+            }
 
-        // First, expire any old stuck subscriptions...
-        await supabase.from('subscriptions')
-            .update({ status: 'expired' }) // Changed from 'canceled'
-            .eq('user_id', user.id);
+        } else {
+            console.log(`[DEBUG] 🔺 Mode: UPGRADE`);
+            profileUpdates.is_subscribed = true;
+            profileUpdates.subscription_status = 'active'; 
+            
+            const futureDate = new Date();
+            futureDate.setFullYear(futureDate.getFullYear() + 10); 
+            profileUpdates.subscription_end = futureDate.toISOString();
 
-        // ...Then insert a fresh "Active" one so check_and_downgrade accepts the new role
-        await supabase.from('subscriptions').insert({
-            user_id: user.id,
-            status: 'active',
-            tier: newTier,
-            plan_id: 'admin_granted',
-            current_period_start: new Date().toISOString(),
-            current_period_end: futureDate.toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-        });
-    }
+            console.log(`[DEBUG] 1a. Expiring old stuck subscriptions...`);
+            const { data: expData, error: expError } = await supabase
+                .from('subscriptions')
+                .update({ status: 'expired' })
+                .eq('user_id', user.id)
+                .select();
+            
+            console.log(`[DEBUG] Expire Reply ->`, { expData, expError });
 
-    // Execute Database Update for Profile
-    const { error } = await supabase
-        .from('profiles')
-        .update(profileUpdates)
-        .eq('id', user.id);
+            console.log(`[DEBUG] 1b. Inserting new 'dummy' active subscription...`);
+            const { data: insData, error: insError } = await supabase
+                .from('subscriptions')
+                .insert({
+                    user_id: user.id,
+                    status: 'active',
+                    tier: newTier,
+                    plan_id: 'admin_granted',
+                    current_period_start: new Date().toISOString(),
+                    current_period_end: futureDate.toISOString(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .select();
+            
+            console.log(`[DEBUG] Insert Reply ->`, { insData, insError });
+        }
 
-    if (error) {
-        alert("Promotion Failed: " + error.message);
-    } else {
-        // Notify User
+        console.log(`[DEBUG] 2. Updating User Profile...`, profileUpdates);
+        const { data: profData, error: profError } = await supabase
+            .from('profiles')
+            .update(profileUpdates)
+            .eq('id', user.id)
+            .select();
+
+        console.log(`[DEBUG] Profile Reply ->`, { profData, profError });
+
+        if (profError) throw profError;
+
+        console.log(`[DEBUG] 3. Sending Notification...`);
         await supabase.from('notifications').insert({
-            user_id: user.id,
-            type: 'system', // specific type for system msgs
-            title: notifTitle,
-            message: notifMsg,
-            link: null
+            user_id: user.id, type: 'system', title: notifTitle, message: notifMsg, link: null
         });
 
-        alert(`User promoted to ${newTier.toUpperCase()}. Notification sent.`);
-        searchUser(); // Refresh UI
+        console.log(`[DEBUG] ✅ COMPLETE!`);
+        alert(`User updated successfully to ${newTier.toUpperCase()}. Check console for logs.`);
+        searchUser();
+
+    } catch (err) {
+        console.error("🚨 [DEBUG] FATAL ERROR CRASH:", err);
+        alert("Operation Failed: " + err.message);
     }
   };
 
