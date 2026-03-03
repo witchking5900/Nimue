@@ -30,7 +30,7 @@ import SecurityManager from './pages/admin/components/SecurityManager';
 import ExpirationBanner from './components/ExpirationBanner';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentFailure from './pages/PaymentFailure';
-import UpdatePassword from './pages/UpdatePassword'; // <--- NEW IMPORT ADDED HERE
+import UpdatePassword from './pages/UpdatePassword'; 
 import About from './pages/About';
 import Legal from './pages/Legal';
 import Footer from './components/Footer';
@@ -226,26 +226,29 @@ function Dashboard() {
             <ExpirationBanner />
 
             {!activeSection && (
-              <div className="flex-1 flex flex-col items-center justify-center -mt-20 animate-in fade-in">
-                <h1 className={`text-5xl mb-6 text-center ${isMagical ? 'font-serif text-amber-500' : 'font-sans text-blue-600 font-bold'}`}>
+              // 🔥 FIXED: Removed -mt-20 on mobile, added pt-8 so it clears the header perfectly
+              <div className="flex-1 flex flex-col items-center justify-center pt-8 pb-10 md:pt-0 md:-mt-20 animate-in fade-in">
+                {/* 🔥 FIXED: Reduced text size on mobile to prevent wrapping */}
+                <h1 className={`text-4xl md:text-5xl mb-4 md:mb-6 text-center leading-tight ${isMagical ? 'font-serif text-amber-500' : 'font-sans text-blue-600 font-bold'}`}>
                   {isMagical ? t.magicalTitle : t.standardTitle}
                 </h1>
-                <p className="text-xl opacity-80 max-w-lg text-center mb-12">
+                {/* 🔥 FIXED: Adjusted margins and text sizing for mobile */}
+                <p className="text-lg md:text-xl opacity-80 max-w-lg text-center mb-8 md:mb-12 px-4">
                   {isMagical ? t.magicalDesc : t.standardDesc}
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
                   <button onClick={() => setActiveSection('theory')} className={`p-8 rounded-xl border flex flex-col items-center gap-4 transition-all hover:scale-105 ${isMagical ? 'bg-slate-900 border-amber-900/50 hover:border-amber-500' : 'bg-white border-slate-200 shadow-lg hover:shadow-xl'}`}>
                     <Book size={48} className={isMagical ? 'text-amber-500' : 'text-blue-500'} />
-                    <span className="text-2xl font-bold">{isMagical ? t.theoryMagical : t.theoryStandard}</span>
+                    <span className="text-xl md:text-2xl font-bold">{isMagical ? t.theoryMagical : t.theoryStandard}</span>
                   </button>
                   <button onClick={() => setActiveSection('apps')} className={`p-8 rounded-xl border flex flex-col items-center gap-4 transition-all hover:scale-105 ${isMagical ? 'bg-slate-900 border-amber-900/50 hover:border-amber-500' : 'bg-white border-slate-200 shadow-lg hover:shadow-xl'}`}>
                     <GraduationCap size={48} className={isMagical ? 'text-emerald-500' : 'text-blue-500'} />
-                    <span className="text-2xl font-bold">{isMagical ? t.appsMagical : t.appsStandard}</span>
+                    <span className="text-xl md:text-2xl font-bold">{isMagical ? t.appsMagical : t.appsStandard}</span>
                   </button>
                   <button onClick={() => setActiveSection('community')} className={`p-8 rounded-xl border flex flex-col items-center gap-4 transition-all hover:scale-105 ${isMagical ? 'bg-slate-900 border-amber-900/50 hover:border-amber-500' : 'bg-white border-slate-200 shadow-lg hover:shadow-xl'}`}>
                     {isMagical ? <Crown size={48} className="text-purple-500" /> : <Users size={48} className="text-blue-600" />}
-                    <span className="text-2xl font-bold">{isMagical ? t.communityMagical : t.communityStandard}</span>
+                    <span className="text-xl md:text-2xl font-bold">{isMagical ? t.communityMagical : t.communityStandard}</span>
                   </button>
                 </div>
               </div>
@@ -266,50 +269,6 @@ function Dashboard() {
 }
 
 export default function App() {
-  /* replaced
-  return (
-    <AuthProvider>
-      <ThemeProvider>
-        <ToastProvider>
-          <GameProvider>
-            <SecurityOverlay>
-              {// ▼▼▼ AUTO-DOWNGRADER ▼▼▼ }
-              <SubscriptionManager /> 
-              
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/community" element={<Dashboard />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/legal" element={<Legal />} />
-
-                {// ▼▼▼ NEW PAYMENT ROUTES ▼▼▼}
-                <Route path="/payment-success" element={<PaymentSuccess />} />
-                <Route path="/payment-fail" element={<PaymentFailure />} />
-                
-                {// ▼▼▼ PASSWORD UPDATE ROUTE ADDED HERE ▼▼▼}
-                <Route path="/update-password" element={<UpdatePassword />} />
-
-                <Route path="/pricing" element={
-                    <>
-                        <PricingNavbarWrapper /> 
-                        <PricingPage />
-                    </>
-                } />
-                <Route path="/admin" element={<AdminLogin />} />
-                <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                <Route path="/admin/security" element={<SecurityManager />} />
-                <Route path="/grimoire" element={<GrimoireRoute />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </SecurityOverlay>
-          </GameProvider>
-        </ToastProvider>
-      </ThemeProvider>
-    </AuthProvider>
-  );
-  */
-
-  //dan
   return (
     <SecurityOverlay>
       {/* ▼▼▼ AUTO-DOWNGRADER ▼▼▼ */}
@@ -342,5 +301,4 @@ export default function App() {
       </Routes>
     </SecurityOverlay>
   );
-  //mde
 }
