@@ -7,7 +7,7 @@ import { supabase } from '../supabaseClient';
 
 // ▼▼▼ CONTROL PANEL ▼▼▼
 // ⚠️ SET TO FALSE FOR LAUNCH (Enable later for promotions)
-const IS_LIFETIME_DEAL_ACTIVE = true; 
+const IS_LIFETIME_DEAL_ACTIVE = false; 
 
 export default function PricingPage() {
   const { theme, language } = useTheme();
